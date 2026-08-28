@@ -7,27 +7,12 @@ from app.services.gemini_service import gemini_service
 
 logger = logging.getLogger(__name__)
 
-BIAS_PROMPT = """Analyze the tone and framing of this news article headline and snippet.
-
-Classify as exactly ONE of:
-- "neutral" — balanced, factual reporting
-- "pro_government" — favorable framing toward government/authority
-- "critical" — critical or opposition framing
-- "sensationalist" — emotionally charged, exaggerated language
-
-Article:
-Headline: {title}
-Source: {source}
-Content: {content}
-
-Respond ONLY with valid JSON:
-{{"label": "one_of_the_four_labels", "explanation": "one sentence explanation"}}"""
-
 
 class VerifierAgent:
     """
     Takes summarized clusters from Writer Agent.
     Cross-references sources, detects bias, and scores confidence.
+    Optimized: 1 batched bias call instead of ~50 individual calls.
     """
 
     def __init__(self):
@@ -35,49 +20,99 @@ class VerifierAgent:
 
     async def verify(self, clusters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Run full verification on all clusters."""
+        # Step 1: Batch bias detection for ALL articles across all clusters
+        all_bias_results = await self._detect_bias_batch(clusters)
+
+        # Step 2: Apply bias results, confidence, and breaking detection per cluster
+        article_idx = 0
         for cluster in clusters:
-            # Bias detection per source
-            bias_results = await self._detect_bias(cluster)
-            cluster["bias_analysis"] = self._aggregate_bias(bias_results)
+            articles = cluster.get("articles", [])
 
-            # Confidence scoring
+            # Collect bias results for this cluster's articles
+            cluster_bias_results = []
+            for article in articles:
+                result = all_bias_results.get(article_idx, {
+                    "label": "neutral",
+                    "explanation": "Analysis unavailable",
+                })
+                # Store per-article bias on the article dict (used by pipeline)
+                article["bias_label"] = result.get("label", "neutral")
+                article["bias_explanation"] = result.get("explanation", "")
+                cluster_bias_results.append({
+                    "source_name": article.get("source_name"),
+                    "label": result.get("label", "neutral"),
+                    "explanation": result.get("explanation", ""),
+                })
+                article_idx += 1
+
+            cluster["bias_analysis"] = self._aggregate_bias(cluster_bias_results)
             cluster["confidence_score"] = self._calculate_confidence(cluster)
-
-            # Breaking news detection
             cluster["is_breaking"] = self._is_breaking_news(cluster)
 
             logger.info(
-                f"  Cluster '{cluster['id'][:8]}...': "
+                f"  Cluster [{cluster.get('category', '?')}]: "
                 f"confidence={cluster['confidence_score']:.2f}, "
                 f"breaking={cluster['is_breaking']}"
             )
         return clusters
 
-    async def _detect_bias(self, cluster: Dict) -> List[Dict]:
-        """Detect bias for each article in the cluster."""
-        results = []
-        articles = cluster.get("articles", [])
+    async def _detect_bias_batch(self, clusters: List[Dict]) -> Dict[int, Dict]:
+        """Detect bias for ALL articles in one Gemini call. Returns {global_index: result}."""
+        # Build numbered list of all articles
+        articles_list = []
+        idx = 0
+        for cluster in clusters:
+            for article in cluster.get("articles", []):
+                title = article.get("title", "")
+                source = article.get("source_name", "")
+                content = article.get("content", "")[:200]
+                articles_list.append(
+                    f"{idx+1}. [{source}] {title}\n   {content}"
+                )
+                idx += 1
 
-        for article in articles[:5]:  # Limit to 5 per cluster to save API calls
-            prompt = BIAS_PROMPT.format(
-                title=article.get("title", ""),
-                source=article.get("source_name", ""),
-                content=article.get("content", "")[:300],
-            )
-            response = await gemini_service.generate_json(prompt)
-            if response:
-                results.append({
-                    "source_name": article.get("source_name"),
-                    "label": response.get("label", "neutral"),
-                    "explanation": response.get("explanation", ""),
-                })
-            else:
-                results.append({
-                    "source_name": article.get("source_name"),
-                    "label": "neutral",
-                    "explanation": "Analysis unavailable",
-                })
-        return results
+        total_articles = len(articles_list)
+        if total_articles == 0:
+            return {}
+
+        articles_text = "\n".join(articles_list)
+
+        prompt = f"""Analyze the tone and framing of each numbered news article below.
+
+Classify each as exactly ONE of:
+- "neutral" — balanced, factual reporting
+- "pro_government" — favorable framing toward government/authority
+- "critical" — critical or opposition framing
+- "sensationalist" — emotionally charged, exaggerated language
+
+Articles:
+{articles_text}
+
+Return ONLY valid JSON in this exact format:
+{{"results": [{{"article": 1, "label": "neutral", "explanation": "Straight factual reporting"}}, {{"article": 2, "label": "critical", "explanation": "Critical framing of policy"}}]}}
+
+Rules:
+- Every article number from 1 to {total_articles} must appear exactly once
+- Use only the four labels listed above
+- Keep explanations to one short sentence
+- Do not add any explanation, only return JSON"""
+
+        result = await gemini_service.generate_json(prompt)
+        bias_map = {}
+
+        if result and "results" in result:
+            for item in result["results"]:
+                article_num = item.get("article", 0) - 1  # Convert to 0-based
+                if 0 <= article_num < total_articles:
+                    bias_map[article_num] = {
+                        "label": item.get("label", "neutral"),
+                        "explanation": item.get("explanation", ""),
+                    }
+            logger.info(f"Bias detection: analyzed {len(bias_map)}/{total_articles} articles")
+        else:
+            logger.warning("Batch bias detection failed")
+
+        return bias_map
 
     def _aggregate_bias(self, bias_results: List[Dict]) -> Dict:
         """Aggregate individual bias labels into a summary."""

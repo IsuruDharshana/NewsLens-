@@ -138,14 +138,18 @@ class PipelineOrchestrator:
 
             stats["status"] = "completed"
             stats["completed_at"] = datetime.now(timezone.utc).isoformat()
-            stats["gemini_calls"] = self.analyst.__class__.__name__  # placeholder
+
+            from app.services.gemini_service import gemini_service
+            gemini_calls = gemini_service.get_call_count()
+            stats["gemini_calls"] = gemini_calls
 
             logger.info(
                 f"═══ PIPELINE COMPLETE ═══\n"
                 f"  Articles fetched: {stats['articles_fetched']}\n"
                 f"  Articles stored:  {stats['articles_stored']}\n"
                 f"  Clusters created: {stats['clusters_created']}\n"
-                f"  Breaking stories: {breaking_count}"
+                f"  Breaking stories: {breaking_count}\n"
+                f"  Gemini API calls: {gemini_calls}"
             )
 
         except Exception as e:

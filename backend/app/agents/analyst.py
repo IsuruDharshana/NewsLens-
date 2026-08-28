@@ -1,6 +1,5 @@
 """Analyst Agent — Clusters articles by story and categorizes them."""
 
-import json
 import logging
 import uuid
 from typing import List, Dict, Any
@@ -14,29 +13,28 @@ class AnalystAgent:
     """
     Takes raw articles from Scout Agent.
     Uses Gemini to cluster same-story articles and categorize them.
+    Optimized: 2 Gemini calls total (1 clustering + 1 batch categorization).
     """
 
     def __init__(self):
         logger.info("Analyst Agent initialized")
 
     async def analyze(self, articles: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Main analysis: cluster via Gemini → categorize."""
+        """Main analysis: cluster via Gemini → batch categorize."""
         if not articles:
             return {"clusters": [], "new_articles": 0}
 
-        # Step 1: Cluster articles using Gemini
+        # Step 1: Cluster articles using Gemini (1 call)
         clusters = await self._cluster_with_gemini(articles)
 
-        # Step 2: Categorize each cluster
-        for cluster in clusters:
-            cluster["category"] = await self._categorize(cluster)
+        # Step 2: Categorize ALL clusters in one call
+        await self._categorize_batch(clusters)
 
         logger.info(f"Analyst Agent: {len(clusters)} clusters from {len(articles)} articles")
         return {"clusters": clusters, "new_articles": len(articles)}
 
     async def _cluster_with_gemini(self, articles: List[Dict]) -> List[Dict]:
         """Use Gemini to group articles about the same story together."""
-        # Build numbered list of headlines with source
         numbered_list = "\n".join(
             f"{i+1}. [{a['source_name']}] {a['title']}"
             for i, a in enumerate(articles)
@@ -66,7 +64,7 @@ Rules:
         for group in result["groups"]:
             group_articles = []
             for num in group.get("article_numbers", []):
-                idx = num - 1  # Convert to 0-based index
+                idx = num - 1
                 if 0 <= idx < len(articles):
                     group_articles.append(articles[idx])
             if group_articles:
@@ -75,6 +73,51 @@ Rules:
                 clusters.append(cluster)
 
         return clusters
+
+    async def _categorize_batch(self, clusters: List[Dict]) -> None:
+        """Categorize ALL clusters in a single Gemini call."""
+        from app.models.sources import CATEGORIES
+
+        # Build numbered list of cluster topics/titles
+        cluster_list = []
+        for i, cluster in enumerate(clusters):
+            titles = [a["title"] for a in cluster["articles"][:3]]
+            topic = cluster.get("topic", "")
+            cluster_list.append(f"{i+1}. Topic: {topic}\n   Headlines: {'; '.join(titles)}")
+
+        categories_str = ", ".join(CATEGORIES)
+
+        prompt = f"""Categorize each numbered news story into exactly ONE of these categories: {categories_str}.
+
+Stories:
+{chr(10).join(cluster_list)}
+
+Return ONLY valid JSON in this exact format:
+{{"categories": [{{"cluster": 1, "category": "Politics"}}, {{"cluster": 2, "category": "Economy"}}]}}
+
+Rules:
+- Every cluster number must appear exactly once
+- Use only categories from the provided list
+- Do not add any explanation, only return JSON"""
+
+        result = await gemini_service.generate_json(prompt)
+
+        if result and "categories" in result:
+            for item in result["categories"]:
+                idx = item.get("cluster", 0) - 1
+                cat = item.get("category", "Politics")
+                if 0 <= idx < len(clusters):
+                    # Validate category name
+                    for valid_cat in CATEGORIES:
+                        if valid_cat.lower() in cat.lower():
+                            clusters[idx]["category"] = valid_cat
+                            break
+                    else:
+                        clusters[idx]["category"] = "Politics"
+        else:
+            logger.warning("Batch categorization failed, using default")
+            for cluster in clusters:
+                cluster["category"] = "Politics"
 
     def _new_cluster(self, articles: List[Dict]) -> Dict:
         """Create a new cluster from articles."""
@@ -86,20 +129,3 @@ Rules:
             "is_breaking": False,
             "trend_score": 0.0,
         }
-
-    async def _categorize(self, cluster: Dict) -> str:
-        """Use Gemini to categorize a cluster of articles."""
-        titles = [a["title"] for a in cluster["articles"][:5]]
-        prompt = (
-            f"Categorize this news story into exactly ONE of these categories: "
-            f"Politics, Economy, Sports, Technology, Health, Education, Environment, Entertainment.\n\n"
-            f"Headlines:\n" + "\n".join(f"- {t}" for t in titles) +
-            f"\n\nRespond with ONLY the category name, nothing else."
-        )
-        result = await gemini_service.generate_text(prompt)
-        if result:
-            from app.models.sources import CATEGORIES
-            for cat in CATEGORIES:
-                if cat.lower() in result.lower():
-                    return cat
-        return "Politics"  # default fallback
