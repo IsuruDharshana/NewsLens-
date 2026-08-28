@@ -1,23 +1,7 @@
 -- NewsLens Database Schema
 -- Run this in Supabase SQL Editor
 
--- Articles ingested from RSS feeds
-CREATE TABLE articles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    source_name TEXT NOT NULL,
-    source_url TEXT NOT NULL UNIQUE,
-    title TEXT NOT NULL,
-    content TEXT,
-    published_at TIMESTAMPTZ,
-    category TEXT,
-    language TEXT DEFAULT 'en',
-    cluster_id UUID REFERENCES clusters(id),
-    bias_label TEXT,
-    bias_explanation TEXT,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Grouped stories (same event from multiple sources)
+-- Grouped stories (same event from multiple sources) — MUST be before articles
 CREATE TABLE clusters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     summary TEXT,
@@ -31,6 +15,22 @@ CREATE TABLE clusters (
     published_at TIMESTAMPTZ DEFAULT now(),
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Articles ingested from RSS feeds (references clusters)
+CREATE TABLE articles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_name TEXT NOT NULL,
+    source_url TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    content TEXT,
+    published_at TIMESTAMPTZ,
+    category TEXT,
+    language TEXT DEFAULT 'en',
+    cluster_id UUID REFERENCES clusters(id),
+    bias_label TEXT,
+    bias_explanation TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- User profiles

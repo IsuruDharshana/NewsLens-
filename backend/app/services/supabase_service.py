@@ -139,9 +139,10 @@ class SupabaseService:
     async def complete_pipeline_run(self, run_id: str, stats: Dict[str, Any]):
         """Mark a pipeline run as completed with stats."""
         try:
+            from datetime import datetime, timezone
             self.client.table("pipeline_runs").update({
                 "status": "completed",
-                "completed_at": "now()",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
                 "articles_fetched": stats.get("articles_fetched", 0),
                 "clusters_created": stats.get("clusters_created", 0),
                 "clusters_updated": stats.get("clusters_updated", 0),
@@ -151,5 +152,27 @@ class SupabaseService:
             logger.error(f"Error completing pipeline run: {e}")
 
 
-# Singleton instance
-supabase_service = SupabaseService()
+# Lazy singleton — created on first access, not at import time
+_supabase_service_instance: SupabaseService | None = None
+
+
+def get_supabase_service() -> SupabaseService:
+    """Get or create the SupabaseService singleton."""
+    global _supabase_service_instance
+    if _supabase_service_instance is None:
+        _supabase_service_instance = SupabaseService()
+    return _supabase_service_instance
+
+
+# Backward-compatible alias for existing imports
+supabase_service = None  # type: ignore
+
+
+class _SupabaseProxy:
+    """Proxy that lazily initializes SupabaseService on first attribute access."""
+
+    def __getattr__(self, name):
+        return getattr(get_supabase_service(), name)
+
+
+supabase_service = _SupabaseProxy()  # type: ignore

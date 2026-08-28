@@ -5,9 +5,12 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any
 
 import feedparser
+import requests
 
 from app.models.sources import FEED_SOURCES
 from app.config import get_settings
+
+FEED_TIMEOUT = 10  # seconds per feed
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -38,8 +41,21 @@ class ScoutAgent:
         return all_articles
 
     async def _fetch_feed(self, feed_config: Dict) -> List[Dict[str, Any]]:
-        """Fetch and parse a single RSS feed."""
-        feed = feedparser.parse(feed_config["url"])
+        """Fetch and parse a single RSS feed with timeout."""
+        try:
+            response = requests.get(
+                feed_config["url"],
+                timeout=FEED_TIMEOUT,
+                headers={"User-Agent": "NewsLens/0.2 (News Aggregator)"},
+            )
+            response.raise_for_status()
+            feed = feedparser.parse(response.content)
+        except requests.exceptions.Timeout:
+            logger.warning(f"  {feed_config['name']}: timed out after {FEED_TIMEOUT}s")
+            return []
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"  {feed_config['name']}: request failed - {e}")
+            return []
         articles = []
 
         for entry in feed.entries[:settings.max_articles_per_feed]:
@@ -90,7 +106,7 @@ class ScoutAgent:
                     pass
         return None
 
-    def _is_too_old(self, published: datetime, max_hours: int = 24) -> bool:
+    def _is_too_old(self, published: datetime, max_hours: int = 72) -> bool:
         """Check if an article is older than max_hours."""
         now = datetime.now(timezone.utc)
         diff = now - published
