@@ -1,9 +1,11 @@
 import logging
 import asyncio
+import json
 import time
 from typing import Optional, List
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from app.config import get_settings
 
@@ -12,14 +14,16 @@ settings = get_settings()
 
 
 class GeminiService:
-    """Handles all Gemini API calls with rate limiting."""
+    """Handles all Gemini API calls with rate limiting. Uses the new google-genai SDK."""
+
+    MODEL = "gemini-3.6-flash"
+    EMBEDDING_MODEL = "text-embedding-004"
 
     def __init__(self):
-        genai.configure(api_key=settings.gemini_api_key)
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        self.client = genai.Client(api_key=settings.gemini_api_key)
         self._last_call_time = 0.0
         self._call_count = 0
-        logger.info("Gemini service initialized")
+        logger.info(f"Gemini service initialized (model={self.MODEL})")
 
     async def _rate_limit(self):
         """Simple rate limiter: ensure we don't exceed RPM limit."""
@@ -31,18 +35,38 @@ class GeminiService:
             await asyncio.sleep(wait_time)
         self._last_call_time = time.time()
 
-    async def generate_text(self, prompt: str, max_retries: int = 3) -> Optional[str]:
+    async def generate_text(self, prompt: str, max_retries: int = 5) -> Optional[str]:
         """Generate text using Gemini with retry logic."""
         await self._rate_limit()
         for attempt in range(max_retries):
             try:
-                response = self.model.generate_content(prompt)
+                response = self.client.models.generate_content(
+                    model=self.MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                            disable=True
+                        )
+                    ),
+                )
                 self._call_count += 1
                 return response.text.strip() if response.text else None
             except Exception as e:
-                logger.warning(f"Gemini call attempt {attempt + 1} failed: {e}")
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)  # exponential backoff
+                error_str = str(e)
+                is_rate_limit = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
+                if is_rate_limit and attempt < max_retries - 1:
+                    # Extract retry delay from error message if available
+                    import re
+                    match = re.search(r"retry in ([\d.]+)s", error_str)
+                    wait = float(match.group(1)) + 1.0 if match else 15.0
+                    logger.info(f"Rate limited (429). Waiting {wait:.0f}s before retry {attempt + 2}")
+                    await asyncio.sleep(wait)
+                    self._last_call_time = time.time()  # reset rate limiter
+                elif attempt < max_retries - 1:
+                    logger.warning(f"Gemini call attempt {attempt + 1} failed: {e}")
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    logger.warning(f"Gemini call attempt {attempt + 1} failed: {e}")
         logger.error(f"Gemini text generation failed after {max_retries} attempts")
         return None
 
@@ -50,12 +74,12 @@ class GeminiService:
         """Generate embedding vector for text."""
         await self._rate_limit()
         try:
-            result = genai.embed_content(
-                model="models/embedding-001",
-                content=text,
+            response = self.client.models.embed_content(
+                model=self.EMBEDDING_MODEL,
+                contents=text,
             )
             self._call_count += 1
-            return result["embedding"]
+            return response.embeddings[0].values
         except Exception as e:
             logger.error(f"Gemini embedding failed: {e}")
             return None
@@ -74,7 +98,6 @@ class GeminiService:
         response = await self.generate_text(json_prompt)
         if response:
             try:
-                import json
                 return json.loads(response)
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse Gemini JSON response: {response[:200]}")

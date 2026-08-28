@@ -1,94 +1,83 @@
 """Analyst Agent — Clusters articles by story and categorizes them."""
 
+import json
 import logging
-from typing import List, Dict, Any, Optional
-
-import numpy as np
+import uuid
+from typing import List, Dict, Any
 
 from app.services.gemini_service import gemini_service
-from app.config import get_settings
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 
 class AnalystAgent:
     """
     Takes raw articles from Scout Agent.
-    Generates embeddings, clusters similar stories,
-    assigns categories, and calculates trend scores.
+    Uses Gemini to cluster same-story articles and categorize them.
     """
 
     def __init__(self):
-        self.cluster_centroids: Dict[str, List[float]] = {}
         logger.info("Analyst Agent initialized")
 
     async def analyze(self, articles: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Main analysis: embed → cluster → categorize → score."""
+        """Main analysis: cluster via Gemini → categorize."""
         if not articles:
             return {"clusters": [], "new_articles": 0}
 
-        # Step 1: Generate embeddings
-        texts = [f"{a['title']}. {a.get('content', '')[:200]}" for a in articles]
-        embeddings = await gemini_service.generate_embeddings_batch(texts)
+        # Step 1: Cluster articles using Gemini
+        clusters = await self._cluster_with_gemini(articles)
 
-        # Step 2: Cluster articles
-        clusters = await self._cluster_articles(articles, embeddings)
-
-        # Step 3: Categorize clusters
+        # Step 2: Categorize each cluster
         for cluster in clusters:
-            if not cluster.get("category"):
-                cluster["category"] = await self._categorize(cluster)
+            cluster["category"] = await self._categorize(cluster)
 
         logger.info(f"Analyst Agent: {len(clusters)} clusters from {len(articles)} articles")
         return {"clusters": clusters, "new_articles": len(articles)}
 
-    async def _cluster_articles(
-        self,
-        articles: List[Dict],
-        embeddings: List[Optional[List[float]]],
-    ) -> List[Dict]:
-        """Group articles by semantic similarity."""
-        clusters: List[Dict] = []
+    async def _cluster_with_gemini(self, articles: List[Dict]) -> List[Dict]:
+        """Use Gemini to group articles about the same story together."""
+        # Build numbered list of headlines with source
+        numbered_list = "\n".join(
+            f"{i+1}. [{a['source_name']}] {a['title']}"
+            for i, a in enumerate(articles)
+        )
 
-        for i, (article, embedding) in enumerate(zip(articles, embeddings)):
-            if embedding is None:
-                # No embedding — create standalone cluster
-                clusters.append(self._new_cluster([article]))
-                continue
+        prompt = f"""Group these news headlines by topic. Articles about the SAME story or closely related events should be in the same group.
 
-            # Check against existing cluster centroids
-            best_match = None
-            best_score = 0.0
+Headlines:
+{numbered_list}
 
-            for cluster_id, centroid in self.cluster_centroids.items():
-                score = self._cosine_similarity(embedding, centroid)
-                if score > best_score and score >= settings.similarity_threshold:
-                    best_score = score
-                    best_match = cluster_id
+Return ONLY valid JSON in this exact format:
+{{"groups": [{{"topic": "brief topic description", "article_numbers": [1, 3, 5]}}, {{"topic": "another topic", "article_numbers": [2, 4]}}]}}
 
-            if best_match:
-                # Add to existing cluster
-                for cluster in clusters:
-                    if cluster.get("id") == best_match:
-                        cluster["articles"].append(article)
-                        break
-            else:
-                # Create new cluster
-                new_cluster = self._new_cluster([article])
-                new_cluster["embedding"] = embedding
-                clusters.append(new_cluster)
-                self.cluster_centroids[new_cluster["id"]] = embedding
+Rules:
+- Each article number must appear in exactly one group
+- Groups with only 1 article are fine
+- Group articles that cover the same event or story
+- Do not add any explanation, only return JSON"""
 
-        # Remove temp embedding field before returning
-        for cluster in clusters:
-            cluster.pop("embedding", None)
+        result = await gemini_service.generate_json(prompt)
+
+        if not result or "groups" not in result:
+            logger.warning("Gemini clustering failed, creating individual clusters")
+            return [self._new_cluster([a]) for a in articles]
+
+        clusters = []
+        for group in result["groups"]:
+            group_articles = []
+            for num in group.get("article_numbers", []):
+                idx = num - 1  # Convert to 0-based index
+                if 0 <= idx < len(articles):
+                    group_articles.append(articles[idx])
+            if group_articles:
+                cluster = self._new_cluster(group_articles)
+                cluster["topic"] = group.get("topic", "")
+                clusters.append(cluster)
 
         return clusters
 
     def _new_cluster(self, articles: List[Dict]) -> Dict:
         """Create a new cluster from articles."""
-        import uuid
         return {
             "id": str(uuid.uuid4()),
             "articles": articles,
@@ -97,14 +86,6 @@ class AnalystAgent:
             "is_breaking": False,
             "trend_score": 0.0,
         }
-
-    def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
-        """Calculate cosine similarity between two vectors."""
-        a_arr, b_arr = np.array(a), np.array(b)
-        norm_a, norm_b = np.linalg.norm(a_arr), np.linalg.norm(b_arr)
-        if norm_a == 0 or norm_b == 0:
-            return 0.0
-        return float(np.dot(a_arr, b_arr) / (norm_a * norm_b))
 
     async def _categorize(self, cluster: Dict) -> str:
         """Use Gemini to categorize a cluster of articles."""

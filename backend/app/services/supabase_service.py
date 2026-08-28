@@ -139,9 +139,10 @@ class SupabaseService:
     async def complete_pipeline_run(self, run_id: str, stats: Dict[str, Any]):
         """Mark a pipeline run as completed with stats."""
         try:
+            from datetime import datetime, timezone
             self.client.table("pipeline_runs").update({
                 "status": "completed",
-                "completed_at": "now()",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
                 "articles_fetched": stats.get("articles_fetched", 0),
                 "clusters_created": stats.get("clusters_created", 0),
                 "clusters_updated": stats.get("clusters_updated", 0),
