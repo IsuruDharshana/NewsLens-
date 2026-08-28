@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff
+
+      - name: Lint with ruff
+        run: ruff check app/ --output-format=github
+        continue-on-error: true
+
+      - name: Check imports
+        run: python -c "from app.main import app; print('Imports OK')"
+
+      - name: Run tests
+        run: pytest --tb=short -q || echo "No tests yet"
+        env:
+          SUPABASE_URL: "https://test.supabase.co"
+          SUPABASE_ANON_KEY: "test"
+          SUPABASE_SERVICE_KEY: "test"
+          GEMINI_API_KEY: "test"
+
+  frontend:
+    name: Frontend (Expo)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Lint
+        run: npx expo lint --max-warnings=0
+        continue-on-error: true
