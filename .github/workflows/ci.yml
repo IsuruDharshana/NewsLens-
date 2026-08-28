@@ -34,6 +34,11 @@ jobs:
 
       - name: Check imports
         run: python -c "from app.main import app; print('Imports OK')"
+        env:
+          SUPABASE_URL: "https://test.supabase.co"
+          SUPABASE_ANON_KEY: "test"
+          SUPABASE_SERVICE_KEY: "test"
+          GEMINI_API_KEY: "test"
 
       - name: Run tests
         run: pytest --tb=short -q || echo "No tests yet"

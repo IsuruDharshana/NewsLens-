@@ -108,5 +108,23 @@ class GeminiService:
         return self._call_count
 
 
-# Singleton instance
-gemini_service = GeminiService()
+# Lazy singleton — created on first access, not at import time
+_gemini_service_instance: GeminiService | None = None
+
+
+def get_gemini_service() -> GeminiService:
+    """Get or create the GeminiService singleton."""
+    global _gemini_service_instance
+    if _gemini_service_instance is None:
+        _gemini_service_instance = GeminiService()
+    return _gemini_service_instance
+
+
+class _GeminiProxy:
+    """Proxy that lazily initializes GeminiService on first attribute access."""
+
+    def __getattr__(self, name):
+        return getattr(get_gemini_service(), name)
+
+
+gemini_service = _GeminiProxy()  # type: ignore
