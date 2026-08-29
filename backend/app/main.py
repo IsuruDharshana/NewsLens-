@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import get_settings
-from app.routes import news, auth, user, pipeline as pipeline_router, engage as engage_router
+from app.routes import news, auth, user, pipeline as pipeline_router, engage as engage_router, admin as admin_router
 from app.services.pipeline_service import pipeline
 
 settings = get_settings()
@@ -73,6 +73,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(user.router, prefix="/api/user", tags=["user"])
 app.include_router(pipeline_router.router, prefix="/api/pipeline", tags=["pipeline"])
 app.include_router(engage_router.router, prefix="/api", tags=["engage"])
+app.include_router(admin_router.router, prefix="/api", tags=["admin"])
 
 
 @app.get("/health")
