@@ -87,4 +87,47 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
+/** Engagement types */
+export interface LikeStatus {
+  liked: boolean;
+  like_count: number;
+}
+
+export interface Comment {
+  id: string;
+  text: string;
+  created_at: string;
+  user_id: string;
+  user_name: string;
+}
+
+/** Toggle like on a story. Returns new state. */
+export async function toggleLike(clusterId: string): Promise<LikeStatus> {
+  const { data } = await api.post<LikeStatus>(`/api/engage/like/${clusterId}`);
+  return data;
+}
+
+/** Get like status for a story. */
+export async function getLikeStatus(clusterId: string): Promise<LikeStatus> {
+  const { data } = await api.get<LikeStatus>(`/api/engage/like/${clusterId}`);
+  return data;
+}
+
+/** Get comments for a story. */
+export async function getComments(clusterId: string): Promise<Comment[]> {
+  const { data } = await api.get<Comment[]>(`/api/engage/comments/${clusterId}`);
+  return data;
+}
+
+/** Add a comment to a story. */
+export async function addComment(clusterId: string, text: string): Promise<Comment> {
+  const { data } = await api.post<Comment>(`/api/engage/comments/${clusterId}`, { text });
+  return data;
+}
+
+/** Delete your own comment. */
+export async function deleteComment(commentId: string): Promise<void> {
+  await api.delete(`/api/engage/comments/${commentId}`);
+}
+
 export default api;

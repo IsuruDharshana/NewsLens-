@@ -238,6 +238,111 @@ class SupabaseService:
 
     # --- Pipeline Runs ---
 
+    # --- Likes ---
+
+    def toggle_like(self, user_id: str, cluster_id: str) -> bool:
+        """Toggle like. Returns True if liked, False if unliked."""
+        try:
+            # Check if already liked
+            existing = self.client.table("likes").select("user_id").eq(
+                "user_id", user_id
+            ).eq("cluster_id", cluster_id).execute()
+
+            if existing.data:
+                # Unlike
+                self.client.table("likes").delete().eq(
+                    "user_id", user_id
+                ).eq("cluster_id", cluster_id).execute()
+                return False
+            else:
+                # Like
+                self.client.table("likes").insert({
+                    "user_id": user_id,
+                    "cluster_id": cluster_id,
+                }).execute()
+                return True
+        except Exception as e:
+            logger.error(f"Error toggling like: {e}")
+            raise
+
+    def get_like_count(self, cluster_id: str) -> int:
+        """Get total likes for a cluster."""
+        try:
+            result = self.client.table("likes").select(
+                "user_id", count="exact"
+            ).eq("cluster_id", cluster_id).execute()
+            return result.count or 0
+        except Exception:
+            return 0
+
+    def user_has_liked(self, user_id: str, cluster_id: str) -> bool:
+        """Check if a user has liked a cluster."""
+        try:
+            result = self.client.table("likes").select("user_id").eq(
+                "user_id", user_id
+            ).eq("cluster_id", cluster_id).execute()
+            return bool(result.data)
+        except Exception:
+            return False
+
+    # --- Comments ---
+
+    def get_comments(self, cluster_id: str, limit: int = 50) -> list[dict]:
+        """Get comments for a cluster with user info."""
+        try:
+            result = self.client.table("comments").select(
+                "id, text, created_at, user_id, user_profiles(name)"
+            ).eq("cluster_id", cluster_id).order(
+                "created_at", desc=False
+            ).limit(limit).execute()
+            comments = []
+            for c in (result.data or []):
+                profile = c.get("user_profiles", {})
+                comments.append({
+                    "id": c["id"],
+                    "text": c["text"],
+                    "created_at": c["created_at"],
+                    "user_id": c["user_id"],
+                    "user_name": profile.get("name", "Anonymous") if profile else "Anonymous",
+                })
+            return comments
+        except Exception as e:
+            logger.error(f"Error fetching comments: {e}")
+            return []
+
+    def add_comment(self, user_id: str, cluster_id: str, text: str) -> dict:
+        """Add a comment to a cluster."""
+        try:
+            result = self.client.table("comments").insert({
+                "user_id": user_id,
+                "cluster_id": cluster_id,
+                "text": text,
+            }).execute()
+            if result.data:
+                row = result.data[0]
+                return {
+                    "id": row["id"],
+                    "text": row["text"],
+                    "created_at": row["created_at"],
+                    "user_id": row["user_id"],
+                    "user_name": "You",
+                }
+            return {}
+        except Exception as e:
+            logger.error(f"Error adding comment: {e}")
+            raise
+
+    def delete_comment(self, user_id: str, comment_id: str) -> bool:
+        """Delete a comment (only if owned by user)."""
+        try:
+            self.client.table("comments").delete().eq(
+                "id", comment_id
+            ).eq("user_id", user_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting comment: {e}")
+            return False
+
     async def create_pipeline_run(self) -> Optional[str]:
         """Create a new pipeline run record."""
         try:
