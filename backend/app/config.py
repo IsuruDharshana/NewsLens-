@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     similarity_threshold: float = 0.75
     max_articles_per_feed: int = 20
     gemini_rpm_limit: int = 15
-    gemini_delay_between_calls: float = 13.0
+    gemini_delay_between_calls: float = 1.0
 
     model_config = {
         "env_file": ".env",
