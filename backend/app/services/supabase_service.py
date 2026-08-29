@@ -238,6 +238,51 @@ class SupabaseService:
 
     # --- Pipeline Runs ---
 
+    # --- Engagement (Likes + Comments) ---
+
+    def get_engagement_counts_batch(self, cluster_ids: list[str]) -> dict[str, dict]:
+        """Get like_count and comment_count for multiple clusters.
+        Returns {cluster_id: {like_count: int, comment_count: int}}.
+        Resilient to missing tables.
+        """
+        result: dict[str, dict] = {
+            cid: {"like_count": 0, "comment_count": 0} for cid in cluster_ids
+        }
+        if not cluster_ids:
+            return result
+
+        # Like counts
+        try:
+            like_rows = self.client.table("likes").select("cluster_id").in_(
+                "cluster_id", cluster_ids
+            ).execute()
+            for row in (like_rows.data or []):
+                cid = row["cluster_id"]
+                if cid in result:
+                    result[cid]["like_count"] += 1
+        except Exception as e:
+            logger.debug(f"Like count query failed (table may not exist): {e}")
+
+        # Comment counts
+        try:
+            comment_rows = self.client.table("comments").select("cluster_id").in_(
+                "cluster_id", cluster_ids
+            ).execute()
+            for row in (comment_rows.data or []):
+                cid = row["cluster_id"]
+                if cid in result:
+                    result[cid]["comment_count"] += 1
+        except Exception as e:
+            logger.debug(f"Comment count query failed (table may not exist): {e}")
+
+        return result
+
+    def get_engagement_counts_single(self, cluster_id: str) -> dict:
+        """Get like_count and comment_count for a single cluster."""
+        return self.get_engagement_counts_batch([cluster_id]).get(
+            cluster_id, {"like_count": 0, "comment_count": 0}
+        )
+
     # --- Likes ---
 
     def toggle_like(self, user_id: str, cluster_id: str) -> bool:

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
+  Alert,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -153,7 +153,9 @@ export default function StoryDetail() {
       const result = await toggleLike(id);
       setLiked(result.liked);
       setLikeCount(result.like_count);
-    } catch { /* ignore */ }
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.detail ?? 'Could not update like. Check that the likes table exists in Supabase.');
+    }
     setTogglingLike(false);
   }, [id, togglingLike]);
 
@@ -164,7 +166,9 @@ export default function StoryDetail() {
       const newComment = await addComment(id, commentText.trim());
       setComments((prev) => [...prev, newComment]);
       setCommentText('');
-    } catch { /* ignore */ }
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.detail ?? 'Could not add comment. Check that the comments table exists in Supabase.');
+    }
     setPostingComment(false);
   }, [id, commentText, postingComment]);
 
@@ -172,7 +176,9 @@ export default function StoryDetail() {
     try {
       await deleteComment(commentId);
       setComments((prev) => prev.filter((c) => c.id !== commentId));
-    } catch { /* ignore */ }
+    } catch (err: any) {
+      Alert.alert('Error', 'Could not delete comment');
+    }
   }, []);
 
   if (loading) {

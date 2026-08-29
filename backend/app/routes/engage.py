@@ -2,8 +2,9 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Header, status
 from pydantic import BaseModel, Field
+from typing import Optional
 
 from app.routes.auth import get_current_user
 from app.services.supabase_service import supabase_service
@@ -32,6 +33,17 @@ class CommentOut(BaseModel):
     user_name: str
 
 
+def _optional_user(authorization: Optional[str] = Header(None)) -> dict | None:
+    """Try to extract user from token, return None if not provided or invalid."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.replace("Bearer ", "")
+    try:
+        return supabase_service.get_user_from_token(token)
+    except Exception:
+        return None
+
+
 # ---------- Routes ---------- #
 
 
@@ -40,28 +52,37 @@ async def toggle_like(cluster_id: str, user: dict = Depends(get_current_user)):
     """Toggle like on a story cluster. Returns new liked state + count."""
     try:
         liked = supabase_service.toggle_like(user["id"], cluster_id)
-        count = supabase_service.get_like_count(cluster_id)
-        return LikeResponse(liked=liked, like_count=count)
+        counts = supabase_service.get_engagement_counts_single(cluster_id)
+        return LikeResponse(liked=liked, like_count=counts["like_count"])
     except Exception as e:
         logger.error(f"Toggle like error: {e}")
-        raise HTTPException(status_code=500, detail="Could not update like")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not update like. Make sure the likes table exists in Supabase.",
+        )
 
 
 @router.get("/like/{cluster_id}", response_model=LikeResponse)
 async def get_like_status(
-    cluster_id: str, user: dict = Depends(get_current_user)
+    cluster_id: str, user: dict | None = Depends(_optional_user)
 ):
-    """Get whether the current user has liked this cluster + total count."""
-    liked = supabase_service.user_has_liked(user["id"], cluster_id)
-    count = supabase_service.get_like_count(cluster_id)
-    return LikeResponse(liked=liked, like_count=count)
+    """Get like count. If authenticated, also returns whether user has liked."""
+    counts = supabase_service.get_engagement_counts_single(cluster_id)
+    liked = False
+    if user:
+        liked = supabase_service.user_has_liked(user["id"], cluster_id)
+    return LikeResponse(liked=liked, like_count=counts["like_count"])
 
 
 @router.get("/comments/{cluster_id}", response_model=list[CommentOut])
 async def get_comments(cluster_id: str):
-    """Get all comments for a story cluster (public)."""
-    comments = supabase_service.get_comments(cluster_id)
-    return [CommentOut(**c) for c in comments]
+    """Get all comments for a story cluster (public, works even if table is empty)."""
+    try:
+        comments = supabase_service.get_comments(cluster_id)
+        return [CommentOut(**c) for c in comments]
+    except Exception as e:
+        logger.debug(f"Get comments failed (table may not exist): {e}")
+        return []
 
 
 @router.post(
@@ -82,7 +103,10 @@ async def add_comment(
         return CommentOut(**comment)
     except Exception as e:
         logger.error(f"Add comment error: {e}")
-        raise HTTPException(status_code=500, detail="Could not add comment")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not add comment. Make sure the comments table exists in Supabase.",
+        )
 
 
 @router.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)

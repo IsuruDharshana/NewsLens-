@@ -68,6 +68,8 @@ class ClusterListItem(BaseModel):
     confidence_score: float = 0.0
     trend_score: float = 0.0
     top_sources: List[str] = []
+    like_count: int = 0
+    comment_count: int = 0
     published_at: Optional[datetime] = None
 
 
