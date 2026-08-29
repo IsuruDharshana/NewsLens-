@@ -65,6 +65,24 @@ CREATE TABLE pipeline_runs (
     status TEXT DEFAULT 'running'
 );
 
+-- User likes on story clusters
+CREATE TABLE likes (
+    user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    cluster_id UUID NOT NULL REFERENCES clusters(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (user_id, cluster_id)
+);
+
+-- User comments on story clusters
+CREATE TABLE comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    cluster_id UUID NOT NULL REFERENCES clusters(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- Indexes for performance
 CREATE INDEX idx_articles_cluster ON articles(cluster_id);
 CREATE INDEX idx_articles_published ON articles(published_at DESC);
@@ -109,3 +127,29 @@ CREATE POLICY "Users can update own preferences"
 CREATE POLICY "Users can insert own preferences"
     ON user_preferences FOR INSERT
     WITH CHECK (auth.uid() = user_id);
+
+-- Likes: users can manage own likes, anyone can read
+CREATE POLICY "Likes are publicly readable"
+    ON likes FOR SELECT
+    USING (true);
+
+CREATE POLICY "Users can manage own likes"
+    ON likes FOR ALL
+    USING (auth.uid() = user_id);
+
+-- Comments: anyone can read, users manage own
+CREATE POLICY "Comments are publicly readable"
+    ON comments FOR SELECT
+    USING (true);
+
+CREATE POLICY "Users can insert own comments"
+    ON comments FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own comments"
+    ON comments FOR UPDATE
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own comments"
+    ON comments FOR DELETE
+    USING (auth.uid() = user_id);

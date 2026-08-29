@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Switch,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -24,6 +25,14 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const { user, logout } = useAuth();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.replace('/login');
+    } catch { /* ignore */ }
+  };
 
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);
   const [saving, setSaving] = useState(false);
@@ -269,7 +278,7 @@ export default function SettingsScreen() {
 
       {/* Logout */}
       <Pressable
-        onPress={logout}
+        onPress={handleLogout}
         style={({ pressed }) => [
           styles.logoutButton,
           { borderColor: colors.breaking, opacity: pressed ? 0.7 : 1 },

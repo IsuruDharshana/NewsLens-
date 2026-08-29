@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _cluster_to_list_item(cluster: dict) -> dict:
+def _cluster_to_list_item(cluster: dict, engagement: dict | None = None) -> dict:
     """Convert a cluster DB row to a ClusterListItem response."""
+    eng = engagement or {}
     return {
         "id": cluster["id"],
         "summary": cluster.get("summary"),
@@ -22,6 +23,8 @@ def _cluster_to_list_item(cluster: dict) -> dict:
         "confidence_score": cluster.get("confidence_score", 0.0),
         "trend_score": cluster.get("trend_score", 0.0),
         "top_sources": [],  # populated separately if needed
+        "like_count": eng.get("like_count", 0),
+        "comment_count": eng.get("comment_count", 0),
         "published_at": cluster.get("published_at"),
     }
 
@@ -58,8 +61,11 @@ async def get_news(
         page=page, limit=limit, category=category
     )
     clusters = await _maybe_translate_summaries(clusters, lang)
+    # Fetch engagement counts for all clusters in one batch
+    cluster_ids = [c["id"] for c in clusters]
+    engagement = supabase_service.get_engagement_counts_batch(cluster_ids)
     return {
-        "data": [_cluster_to_list_item(c) for c in clusters],
+        "data": [_cluster_to_list_item(c, engagement.get(c["id"])) for c in clusters],
         "pagination": {"page": page, "limit": limit, "total": total},
     }
 
@@ -73,8 +79,10 @@ async def get_trending_news(
     clusters, total = await supabase_service.get_clusters(
         page=page, limit=limit, order_by="trend_score"
     )
+    cluster_ids = [c["id"] for c in clusters]
+    engagement = supabase_service.get_engagement_counts_batch(cluster_ids)
     return {
-        "data": [_cluster_to_list_item(c) for c in clusters],
+        "data": [_cluster_to_list_item(c, engagement.get(c["id"])) for c in clusters],
         "pagination": {"page": page, "limit": limit, "total": total},
     }
 
@@ -86,8 +94,10 @@ async def get_breaking_news(lang: Optional[str] = None):
         page=1, limit=10, is_breaking=True
     )
     clusters = await _maybe_translate_summaries(clusters, lang)
+    cluster_ids = [c["id"] for c in clusters]
+    engagement = supabase_service.get_engagement_counts_batch(cluster_ids)
     return {
-        "data": [_cluster_to_list_item(c) for c in clusters],
+        "data": [_cluster_to_list_item(c, engagement.get(c["id"])) for c in clusters],
         "pagination": {"page": 1, "limit": 10, "total": total},
     }
 

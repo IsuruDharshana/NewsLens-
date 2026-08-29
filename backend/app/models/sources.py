@@ -6,24 +6,6 @@
 
 FEED_SOURCES = [
     {
-        "name": "Ada Derana",
-        "url": "https://www.adaderana.lk/rss/",
-        "language": "en",
-        "priority": 0,
-    },
-    {
-        "name": "Daily Mirror",
-        "url": "https://www.dailymirror.lk/rss",
-        "language": "en",
-        "priority": 0,
-    },
-    {
-        "name": "NewsFirst",
-        "url": "https://www.newsfirst.lk/feed/",
-        "language": "en",
-        "priority": 0,
-    },
-    {
         "name": "The Island",
         "url": "https://island.lk/feed/",
         "language": "en",
@@ -36,20 +18,26 @@ FEED_SOURCES = [
         "priority": 0,
     },
     {
-        "name": "Daily FT",
-        "url": "https://www.ft.lk/feed",
+        "name": "Daily News",
+        "url": "https://www.dailynews.lk/feed",
         "language": "en",
-        "priority": 1,
+        "priority": 0,
     },
     {
         "name": "Lanka Business Online",
         "url": "https://www.lankabusinessonline.com/feed/",
         "language": "en",
-        "priority": 1,
+        "priority": 0,
     },
     {
-        "name": "Daily News",
-        "url": "https://www.dailynews.lk/feed",
+        "name": "NewsWire",
+        "url": "https://newswire.lk/feed/",
+        "language": "en",
+        "priority": 0,
+    },
+    {
+        "name": "Sri Lanka Mirror",
+        "url": "https://srilankamirror.com/feed/",
         "language": "en",
         "priority": 1,
     },

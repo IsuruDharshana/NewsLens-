@@ -1,27 +1,52 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  TextInput,
 } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { getStoryDetail, getPreferences } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import {
+  getStoryDetail,
+  getPreferences,
+  getLikeStatus,
+  toggleLike,
+  getComments,
+  addComment,
+  deleteComment,
+} from '@/lib/api';
 import type { ClusterDetail, BiasAnalysis } from '@/lib/types';
+import type { Comment } from '@/lib/api';
 
 export default function StoryDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
+  const { user } = useAuth();
 
   const [story, setStory] = useState<ClusterDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Engagement state
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [togglingLike, setTogglingLike] = useState(false);
+  const [postingComment, setPostingComment] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     (async () => {
@@ -38,6 +63,19 @@ export default function StoryDetail() {
       try {
         const data = await getStoryDetail(id, lang);
         setStory(data);
+
+        // Load engagement data in parallel
+        const [likeData, commentsData] = await Promise.allSettled([
+          getLikeStatus(id),
+          getComments(id),
+        ]);
+        if (likeData.status === 'fulfilled') {
+          setLiked(likeData.value.liked);
+          setLikeCount(likeData.value.like_count);
+        }
+        if (commentsData.status === 'fulfilled') {
+          setComments(commentsData.value);
+        }
       } catch (err: any) {
         setError(err?.message ?? 'Failed to load story');
       }
@@ -108,6 +146,41 @@ export default function StoryDetail() {
     );
   };
 
+  const handleToggleLike = useCallback(async () => {
+    if (!id || togglingLike) return;
+    setTogglingLike(true);
+    try {
+      const result = await toggleLike(id);
+      setLiked(result.liked);
+      setLikeCount(result.like_count);
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.detail ?? 'Could not update like. Check that the likes table exists in Supabase.');
+    }
+    setTogglingLike(false);
+  }, [id, togglingLike]);
+
+  const handleAddComment = useCallback(async () => {
+    if (!id || !commentText.trim() || postingComment) return;
+    setPostingComment(true);
+    try {
+      const newComment = await addComment(id, commentText.trim());
+      setComments((prev) => [...prev, newComment]);
+      setCommentText('');
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.detail ?? 'Could not add comment. Check that the comments table exists in Supabase.');
+    }
+    setPostingComment(false);
+  }, [id, commentText, postingComment]);
+
+  const handleDeleteComment = useCallback(async (commentId: string) => {
+    try {
+      await deleteComment(commentId);
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+    } catch (err: any) {
+      Alert.alert('Error', 'Could not delete comment');
+    }
+  }, []);
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -135,94 +208,185 @@ export default function StoryDetail() {
           headerTintColor: colors.tint,
         }}
       />
-      <ScrollView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        contentContainerStyle={styles.content}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={90}
       >
-        {/* Breaking tag */}
-        {story.is_breaking && (
-          <View style={[styles.breakingTag, { backgroundColor: colors.breakingBackground }]}>
-            <Text style={[styles.breakingText, { color: colors.breaking }]}>
-              BREAKING NEWS
-            </Text>
-          </View>
-        )}
+        <ScrollView
+          ref={scrollViewRef}
+          style={[styles.container, { backgroundColor: colors.background }]}
+          contentContainerStyle={styles.content}
+        >
+          {/* Breaking tag */}
+          {story.is_breaking && (
+            <View style={[styles.breakingTag, { backgroundColor: colors.breakingBackground }]}>
+              <Text style={[styles.breakingText, { color: colors.breaking }]}>
+                BREAKING NEWS
+              </Text>
+            </View>
+          )}
 
-        {/* Summary */}
-        <Text style={[styles.summary, { color: colors.text }]}>
-          {story.summary ?? 'No summary available for this story.'}
-        </Text>
-
-        {/* Stats row */}
-        <View style={[styles.statsRow, { borderColor: colors.cardBorder }]}>
-          <View style={styles.stat}>
-            <Text style={[styles.statValue, { color: colors.tint }]}>
-              {story.source_count}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.subtitle }]}>Sources</Text>
-          </View>
-          <View style={[styles.statDivider, { backgroundColor: colors.cardBorder }]} />
-          <View style={styles.stat}>
-            <Text
-              style={[
-                styles.statValue,
-                {
-                  color:
-                    story.confidence_score >= 0.6
-                      ? colors.confidence
-                      : story.confidence_score >= 0.4
-                        ? '#ffc107'
-                        : colors.breaking,
-                },
-              ]}
-            >
-              {Math.round(story.confidence_score * 100)}%
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.subtitle }]}>Confidence</Text>
-          </View>
-        </View>
-
-        {/* Bias breakdown */}
-        {story.bias_analysis && renderBiasBar(story.bias_analysis)}
-
-        {/* Sources list */}
-        <View style={styles.sourcesSection}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Sources ({story.sources.length})
+          {/* Summary */}
+          <Text style={[styles.summary, { color: colors.text }]}>
+            {story.summary ?? 'No summary available for this story.'}
           </Text>
-          {story.sources.map((source, i) => (
-            <Pressable
-              key={i}
-              onPress={() => Linking.openURL(source.url)}
-              style={({ pressed }) => [
-                styles.sourceRow,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.cardBorder,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <View style={styles.sourceInfo}>
-                <Text style={[styles.sourceName, { color: colors.text }]}>{source.name}</Text>
-                {source.bias_label && (
-                  <View
-                    style={[
-                      styles.biasBadge,
-                      { backgroundColor: biasColor(source.bias_label) + '20' },
-                    ]}
-                  >
-                    <Text style={[styles.biasBadgeText, { color: biasColor(source.bias_label) }]}>
-                      {biasLabel(source.bias_label)}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.openLink, { color: colors.tint }]}>Open →</Text>
+
+          {/* Like + stats row */}
+          <View style={[styles.statsRow, { borderColor: colors.cardBorder }]}>
+            <Pressable onPress={handleToggleLike} style={styles.likeButton}>
+              <Ionicons
+                name={liked ? 'heart' : 'heart-outline'}
+                size={24}
+                color={liked ? '#e74c3c' : colors.subtitle}
+              />
+              <Text style={[styles.likeCount, { color: liked ? '#e74c3c' : colors.subtitle }]}>
+                {likeCount}
+              </Text>
             </Pressable>
-          ))}
+            <View style={[styles.statDivider, { backgroundColor: colors.cardBorder }]} />
+            <View style={styles.stat}>
+              <Text style={[styles.statValue, { color: colors.tint }]}>
+                {story.source_count}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.subtitle }]}>Sources</Text>
+            </View>
+            <View style={[styles.statDivider, { backgroundColor: colors.cardBorder }]} />
+            <View style={styles.stat}>
+              <Text
+                style={[
+                  styles.statValue,
+                  {
+                    color:
+                      story.confidence_score >= 0.6
+                        ? colors.confidence
+                        : story.confidence_score >= 0.4
+                          ? '#ffc107'
+                          : colors.breaking,
+                  },
+                ]}
+              >
+                {Math.round(story.confidence_score * 100)}%
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.subtitle }]}>Confidence</Text>
+            </View>
+          </View>
+
+          {/* Bias breakdown */}
+          {story.bias_analysis && renderBiasBar(story.bias_analysis)}
+
+          {/* Sources list */}
+          <View style={styles.sourcesSection}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Sources ({story.sources.length})
+            </Text>
+            {story.sources.map((source, i) => (
+              <Pressable
+                key={i}
+                onPress={() => Linking.openURL(source.url)}
+                style={({ pressed }) => [
+                  styles.sourceRow,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.cardBorder,
+                    opacity: pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <View style={styles.sourceInfo}>
+                  <Text style={[styles.sourceName, { color: colors.text }]}>{source.name}</Text>
+                  {source.bias_label && (
+                    <View
+                      style={[
+                        styles.biasBadge,
+                        { backgroundColor: biasColor(source.bias_label) + '20' },
+                      ]}
+                    >
+                      <Text style={[styles.biasBadgeText, { color: biasColor(source.bias_label) }]}>
+                        {biasLabel(source.bias_label)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.openLink, { color: colors.tint }]}>Open →</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {/* Comments section */}
+          <View style={styles.commentsSection}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Comments ({comments.length})
+            </Text>
+            {comments.length === 0 && (
+              <Text style={[styles.noComments, { color: colors.subtitle }]}>
+                No comments yet. Be the first to share your thoughts.
+              </Text>
+            )}
+            {comments.map((c) => {
+              const isOwn = c.user_id === user?.user_id;
+              const initials = (c.user_name || 'A').charAt(0).toUpperCase();
+              return (
+                <View key={c.id} style={[styles.commentRow, { borderColor: colors.cardBorder }]}>
+                  <View style={[styles.avatar, { backgroundColor: colors.tint + '20' }]}>
+                    <Text style={[styles.avatarText, { color: colors.tint }]}>{initials}</Text>
+                  </View>
+                  <View style={styles.commentBody}>
+                    <View style={styles.commentHeader}>
+                      <Text style={[styles.commentAuthor, { color: colors.text }]}>
+                        {c.user_name}
+                      </Text>
+                      <Text style={[styles.commentTime, { color: colors.subtitle }]}>
+                        {new Date(c.created_at).toLocaleDateString()}
+                      </Text>
+                    </View>
+                    <Text style={[styles.commentText, { color: colors.text }]}>{c.text}</Text>
+                    {isOwn && (
+                      <Pressable onPress={() => handleDeleteComment(c.id)} style={styles.deleteBtn}>
+                        <Text style={[styles.deleteText, { color: colors.breaking }]}>
+                          Delete
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        {/* Comment input bar */}
+        <View style={[styles.commentInputBar, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <TextInput
+            style={[styles.commentInput, { color: colors.text, borderColor: colors.cardBorder }]}
+            placeholder="Add a comment..."
+            placeholderTextColor={colors.subtitle}
+            value={commentText}
+            onChangeText={setCommentText}
+            maxLength={500}
+            multiline
+            returnKeyType="send"
+            onSubmitEditing={handleAddComment}
+          />
+          <Pressable
+            onPress={handleAddComment}
+            disabled={!commentText.trim() || postingComment}
+            style={({ pressed }) => [
+              styles.sendBtn,
+              {
+                backgroundColor: commentText.trim() ? colors.tint : colors.subtitle + '40',
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            {postingComment ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="send" size={18} color="#fff" />
+            )}
+          </Pressable>
         </View>
-      </ScrollView>
+      </KeyboardAvoidingView>
     </>
   );
 }
@@ -358,5 +522,92 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  // Like button
+  likeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  likeCount: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  // Comments
+  commentsSection: {
+    gap: 10,
+  },
+  noComments: {
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  commentRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  commentBody: {
+    flex: 1,
+    gap: 4,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  commentAuthor: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  commentTime: {
+    fontSize: 11,
+  },
+  commentText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  deleteBtn: {
+    alignSelf: 'flex-start',
+    paddingTop: 2,
+  },
+  deleteText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  commentInputBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    gap: 8,
+  },
+  commentInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    fontSize: 14,
+    maxHeight: 80,
+  },
+  sendBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

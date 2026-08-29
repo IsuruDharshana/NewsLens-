@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import get_settings
-from app.routes import news, auth, user, pipeline as pipeline_router
+from app.routes import news, auth, user, pipeline as pipeline_router, engage as engage_router
 from app.services.pipeline_service import pipeline
 
 settings = get_settings()
@@ -32,13 +32,15 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.app_env}")
     logger.info(f"Pipeline interval: {settings.pipeline_interval_minutes} minutes")
 
-    # Start scheduled pipeline runs
+    # Start scheduled pipeline runs (first run after interval, not immediately)
+    from datetime import datetime, timedelta, timezone
     scheduler.add_job(
         scheduled_pipeline_run,
         "interval",
         minutes=settings.pipeline_interval_minutes,
         id="news_pipeline",
         replace_existing=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=settings.pipeline_interval_minutes),
     )
     scheduler.start()
     logger.info("Scheduler started")
@@ -70,6 +72,7 @@ app.include_router(news.router, prefix="/api/news", tags=["news"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(user.router, prefix="/api/user", tags=["user"])
 app.include_router(pipeline_router.router, prefix="/api/pipeline", tags=["pipeline"])
+app.include_router(engage_router.router, prefix="/api", tags=["engage"])
 
 
 @app.get("/health")

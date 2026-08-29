@@ -11,6 +11,8 @@ export interface ClusterListItem {
   confidence_score: number;
   trend_score: number;
   top_sources: string[];
+  like_count: number;
+  comment_count: number;
   published_at: string | null;
 }
 

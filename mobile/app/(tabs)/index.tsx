@@ -4,10 +4,10 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -103,11 +103,7 @@ export default function HomeFeed() {
   };
 
   const renderCategoryChips = () => (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chipsContainer}
-    >
+    <View style={styles.chipsContainer}>
       {CATEGORIES.map((cat) => {
         const isActive = cat === selectedCategory;
         return (
@@ -133,7 +129,7 @@ export default function HomeFeed() {
           </Pressable>
         );
       })}
-    </ScrollView>
+    </View>
   );
 
   const renderNewsCard = ({ item }: { item: ClusterListItem }) => (
@@ -180,11 +176,28 @@ export default function HomeFeed() {
         {item.summary ?? 'Summary not available'}
       </Text>
 
-      {/* Footer: source count */}
+      {/* Footer: source count + engagement */}
       <View style={styles.cardFooter}>
-        <Text style={[styles.sourceCount, { color: colors.subtitle }]}>
-          {item.source_count} source{item.source_count !== 1 ? 's' : ''}
-        </Text>
+        <View style={styles.footerLeft}>
+          <Text style={[styles.sourceCount, { color: colors.subtitle }]}>
+            {item.source_count} source{item.source_count !== 1 ? 's' : ''}
+          </Text>
+          <View style={styles.engagementRow}>
+            <Ionicons name="heart-outline" size={13} color={colors.subtitle} />
+            <Text style={[styles.engagementText, { color: colors.subtitle }]}>
+              {item.like_count ?? 0}
+            </Text>
+            <Ionicons
+              name="chatbubble-outline"
+              size={13}
+              color={colors.subtitle}
+              style={{ marginLeft: 8 }}
+            />
+            <Text style={[styles.engagementText, { color: colors.subtitle }]}>
+              {item.comment_count ?? 0}
+            </Text>
+          </View>
+        </View>
         {item.is_breaking && (
           <Text style={[styles.breakingTag, { color: colors.breaking }]}>Breaking</Text>
         )}
@@ -322,6 +335,8 @@ const styles = StyleSheet.create({
   chipsContainer: {
     paddingHorizontal: 16,
     paddingVertical: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   chip: {
@@ -387,6 +402,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sourceCount: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  footerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  engagementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  engagementText: {
     fontSize: 12,
     fontWeight: '500',
   },
