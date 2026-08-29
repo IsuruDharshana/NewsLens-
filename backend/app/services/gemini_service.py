@@ -22,6 +22,7 @@ class GeminiService:
     def __init__(self):
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self._last_call_time = 0.0
+        self._translate_last_call_time = 0.0
         self._call_count = 0
         logger.info(f"Gemini service initialized (model={self.MODEL})")
 
@@ -34,6 +35,16 @@ class GeminiService:
             logger.debug(f"Rate limiting: waiting {wait_time:.1f}s")
             await asyncio.sleep(wait_time)
         self._last_call_time = time.time()
+
+    async def _rate_limit_translate(self):
+        """Separate rate limiter for translation (not shared with pipeline)."""
+        now = time.time()
+        elapsed = now - self._translate_last_call_time
+        if elapsed < settings.gemini_delay_between_calls:
+            wait_time = settings.gemini_delay_between_calls - elapsed
+            logger.debug(f"Translation rate limiting: waiting {wait_time:.1f}s")
+            await asyncio.sleep(wait_time)
+        self._translate_last_call_time = time.time()
 
     async def generate_text(self, prompt: str, max_retries: int = 5) -> Optional[str]:
         """Generate text using Gemini with retry logic."""
@@ -68,6 +79,37 @@ class GeminiService:
                 else:
                     logger.warning(f"Gemini call attempt {attempt + 1} failed: {e}")
         logger.error(f"Gemini text generation failed after {max_retries} attempts")
+        return None
+
+    async def generate_text_for_translation(self, prompt: str, max_retries: int = 3) -> Optional[str]:
+        """Generate text for translation using a separate rate limiter (won't block on pipeline)."""
+        await self._rate_limit_translate()
+        for attempt in range(max_retries):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                            disable=True
+                        )
+                    ),
+                )
+                self._call_count += 1
+                return response.text.strip() if response.text else None
+            except Exception as e:
+                error_str = str(e)
+                is_rate_limit = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
+                if is_rate_limit:
+                    # Daily quota exhausted — don't retry, fall back to English immediately
+                    logger.warning(f"Translation quota exhausted, falling back to English")
+                    return None
+                elif attempt < max_retries - 1:
+                    logger.warning(f"Translation attempt {attempt + 1} failed: {e}")
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    logger.warning(f"Translation attempt {attempt + 1} failed: {e}")
+        logger.error(f"Translation generation failed after {max_retries} attempts")
         return None
 
     async def generate_embedding(self, text: str) -> Optional[List[float]]:
@@ -127,7 +169,7 @@ Rules:
 Translate these {len(indexed)} summaries:
 {numbered}"""
 
-        result = await self.generate_text(prompt)
+        result = await self.generate_text_for_translation(prompt)
         if not result:
             return [None] * len(texts)
 

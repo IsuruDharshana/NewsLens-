@@ -32,13 +32,15 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.app_env}")
     logger.info(f"Pipeline interval: {settings.pipeline_interval_minutes} minutes")
 
-    # Start scheduled pipeline runs
+    # Start scheduled pipeline runs (first run after interval, not immediately)
+    from datetime import datetime, timedelta, timezone
     scheduler.add_job(
         scheduled_pipeline_run,
         "interval",
         minutes=settings.pipeline_interval_minutes,
         id="news_pipeline",
         replace_existing=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=settings.pipeline_interval_minutes),
     )
     scheduler.start()
     logger.info("Scheduler started")
