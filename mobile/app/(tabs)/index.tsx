@@ -171,8 +171,15 @@ export default function HomeFeed() {
         </View>
       </View>
 
+      {/* Title */}
+      {item.title ? (
+        <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
+          {item.title}
+        </Text>
+      ) : null}
+
       {/* Summary */}
-      <Text style={[styles.summary, { color: colors.text }]} numberOfLines={3}>
+      <Text style={[styles.summary, { color: colors.text }]} numberOfLines={item.title ? 2 : 3}>
         {item.summary ?? 'Summary not available'}
       </Text>
 
@@ -390,6 +397,11 @@ const styles = StyleSheet.create({
   },
   confidenceText: {
     fontSize: 12,
+  },
+  cardTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '700',
   },
   summary: {
     fontSize: 15,

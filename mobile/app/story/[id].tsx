@@ -227,6 +227,13 @@ export default function StoryDetail() {
             </View>
           )}
 
+          {/* Headline title */}
+          {story.title ? (
+            <Text style={[styles.headline, { color: colors.text }]}>
+              {story.title}
+            </Text>
+          ) : null}
+
           {/* Summary */}
           <Text style={[styles.summary, { color: colors.text }]}>
             {story.summary ?? 'No summary available for this story.'}
@@ -421,6 +428,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.5,
+  },
+  // Headline
+  headline: {
+    fontSize: 22,
+    lineHeight: 30,
+    fontWeight: '800',
   },
   // Summary
   summary: {

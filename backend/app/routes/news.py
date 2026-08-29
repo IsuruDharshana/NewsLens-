@@ -16,6 +16,7 @@ def _cluster_to_list_item(cluster: dict, engagement: dict | None = None) -> dict
     eng = engagement or {}
     return {
         "id": cluster["id"],
+        "title": cluster.get("title"),
         "summary": cluster.get("summary"),
         "source_count": cluster.get("source_count", 0),
         "category": cluster.get("category", "Politics"),
@@ -131,6 +132,7 @@ async def get_news_detail(cluster_id: str, lang: Optional[str] = None):
 
     return {
         "id": cluster["id"],
+        "title": cluster.get("title"),
         "summary": cluster.get("summary"),
         "source_count": cluster.get("source_count", 0),
         "category": cluster.get("category", "Politics"),
