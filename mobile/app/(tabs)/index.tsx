@@ -7,12 +7,13 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { getNews, getBreakingNews } from '@/lib/api';
+import { getNews, getBreakingNews, getPreferences } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import type { ClusterListItem, Category } from '@/lib/types';
 import { CATEGORIES } from '@/lib/types';
 
@@ -20,6 +21,7 @@ export default function HomeFeed() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const router = useRouter();
+  const { user } = useAuth();
 
   const [clusters, setClusters] = useState<ClusterListItem[]>([]);
   const [breaking, setBreaking] = useState<ClusterListItem[]>([]);
@@ -27,13 +29,44 @@ export default function HomeFeed() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [userLang, setUserLang] = useState<string>('en');
 
-  const fetchNews = useCallback(async (category?: string) => {
+  // Load user preferences on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const prefs = await getPreferences();
+        if (prefs.categories && prefs.categories.length > 0) {
+          const firstPref = prefs.categories[0];
+          if (CATEGORIES.includes(firstPref as Category)) {
+            setSelectedCategory(firstPref as Category);
+          }
+        }
+        if (prefs.language) setUserLang(prefs.language);
+      } catch { /* default to 'All' / English */ }
+      setPrefsLoaded(true);
+    })();
+  }, []);
+
+  // Reload language preference when screen gains focus (after settings change)
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          const prefs = await getPreferences();
+          if (prefs.language) setUserLang(prefs.language);
+        } catch { /* ignore */ }
+      })();
+    }, [])
+  );
+
+  const fetchNews = useCallback(async (category?: string, lang?: string) => {
     try {
       setError(null);
       const [newsRes, breakingRes] = await Promise.all([
-        getNews(1, 30, category),
-        getBreakingNews(),
+        getNews(1, 30, category, lang),
+        getBreakingNews(lang),
       ]);
       setClusters(newsRes.data);
       setBreaking(breakingRes.data);
@@ -43,16 +76,17 @@ export default function HomeFeed() {
   }, []);
 
   useEffect(() => {
+    if (!prefsLoaded) return;
     (async () => {
       setLoading(true);
-      await fetchNews(selectedCategory);
+      await fetchNews(selectedCategory, userLang);
       setLoading(false);
     })();
-  }, [selectedCategory, fetchNews]);
+  }, [selectedCategory, fetchNews, prefsLoaded, userLang]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchNews(selectedCategory);
+    await fetchNews(selectedCategory, userLang);
     setRefreshing(false);
   };
 
@@ -175,7 +209,7 @@ export default function HomeFeed() {
           {error}{'\n\n'}Make sure the backend is running at localhost:8000
         </Text>
         <Pressable
-          onPress={() => fetchNews(selectedCategory)}
+          onPress={() => fetchNews(selectedCategory, userLang)}
           style={[styles.retryButton, { backgroundColor: colors.tint }]}
         >
           <Text style={styles.retryText}>Retry</Text>
@@ -186,6 +220,12 @@ export default function HomeFeed() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Greeting */}
+      <View style={styles.greetingBar}>
+        <Text style={[styles.greetingText, { color: colors.subtitle }]}>
+          Hello, <Text style={{ color: colors.text, fontWeight: '600' }}>{user?.name?.split(' ')[0] ?? 'there'}</Text>
+        </Text>
+      </View>
       {renderBreakingBanner()}
       {renderCategoryChips()}
       <FlatList
@@ -259,6 +299,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     gap: 8,
+  },
+  // Greeting
+  greetingBar: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 2,
+  },
+  greetingText: {
+    fontSize: 14,
   },
   breakingLabel: {
     fontWeight: '800',

@@ -122,6 +122,120 @@ class SupabaseService:
             logger.error(f"Error fetching cluster: {e}")
             return None
 
+    # --- Auth ---
+
+    def register_user(self, email: str, password: str, name: str) -> dict:
+        """Register a new user via Supabase Auth. Returns tokens + user info."""
+        response = self.client.auth.sign_up({
+            "email": email,
+            "password": password,
+            "options": {"data": {"name": name}},
+        })
+        user = response.user
+        session = response.session
+
+        # Create user profile row
+        try:
+            self.client.table("user_profiles").insert({
+                "id": user.id,
+                "name": name,
+                "email": email,
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Profile insert (may already exist): {e}")
+
+        return {
+            "access_token": session.access_token,
+            "refresh_token": session.refresh_token,
+            "user_id": user.id,
+            "name": name,
+        }
+
+    def login_user(self, email: str, password: str) -> dict:
+        """Login a user via Supabase Auth. Returns tokens + user info."""
+        response = self.client.auth.sign_in_with_password({
+            "email": email,
+            "password": password,
+        })
+        user = response.user
+        session = response.session
+
+        # Fetch name from profile
+        name = None
+        try:
+            profile = self.client.table("user_profiles").select("name").eq("id", user.id).single().execute()
+            if profile.data:
+                name = profile.data.get("name")
+        except Exception:
+            pass
+
+        return {
+            "access_token": session.access_token,
+            "refresh_token": session.refresh_token,
+            "user_id": user.id,
+            "name": name,
+        }
+
+    def get_user_from_token(self, token: str) -> dict | None:
+        """Validate a JWT token and return user info."""
+        try:
+            response = self.client.auth.get_user(token)
+            user = response.user
+            if not user:
+                return None
+
+            name = None
+            try:
+                profile = self.client.table("user_profiles").select("name").eq("id", user.id).single().execute()
+                if profile.data:
+                    name = profile.data.get("name")
+            except Exception:
+                pass
+
+            return {
+                "id": user.id,
+                "email": user.email,
+                "name": name,
+            }
+        except Exception as e:
+            logger.debug(f"Token validation failed: {e}")
+            return None
+
+    # --- User Preferences ---
+
+    def get_user_preferences(self, user_id: str) -> dict | None:
+        """Get a user's preferences."""
+        try:
+            result = self.client.table("user_preferences").select("*").eq("user_id", user_id).single().execute()
+            return result.data
+        except Exception:
+            return None
+
+    def upsert_user_preferences(
+        self,
+        user_id: str,
+        categories: list[str],
+        language: str = "en",
+        notification_enabled: bool = True,
+        sports_interests: list[str] = None,
+    ) -> dict:
+        """Create or update user preferences."""
+        data = {
+            "user_id": user_id,
+            "categories": categories,
+            "language": language,
+            "sports_interests": sports_interests or [],
+            "notification_enabled": notification_enabled,
+        }
+        try:
+            # Try upsert
+            result = self.client.table("user_preferences").upsert(data).execute()
+            if result.data:
+                return result.data[0]
+        except Exception as e:
+            logger.error(f"Error upserting preferences: {e}")
+        return data
+
     # --- Pipeline Runs ---
 
     async def create_pipeline_run(self) -> Optional[str]:
