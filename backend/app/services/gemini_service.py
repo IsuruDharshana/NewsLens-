@@ -103,6 +103,56 @@ class GeminiService:
                 logger.error(f"Failed to parse Gemini JSON response: {response[:200]}")
         return None
 
+    async def translate_to_sinhala_batch(self, texts: List[str]) -> List[Optional[str]]:
+        """Translate a batch of English texts to native Sinhala journalistic style in one API call."""
+        if not texts:
+            return []
+
+        # Filter out empty/None texts
+        indexed = [(i, t) for i, t in enumerate(texts) if t and t.strip()]
+        if not indexed:
+            return [None] * len(texts)
+
+        numbered = "\n".join(f"{idx+1}. {t}" for idx, t in indexed)
+        prompt = f"""You are a professional Sri Lankan news translator. Translate the following English news summaries into native Sinhala.
+
+Rules:
+- Use natural, journalistic Sinhala as written by Sri Lankan newspaper reporters
+- Use proper Sinhala grammar and sentence structure (not word-for-word translation)
+- Keep proper nouns (people names, place names, organization names) in their common Sinhala forms
+- Maintain the factual tone — do not add opinions or change meaning
+- Use formal written Sinhala (ලිඛිත සිංහල), not colloquial spoken Sinhala
+- Return ONLY the numbered translations, one per line, matching the input numbering
+
+Translate these {len(indexed)} summaries:
+{numbered}"""
+
+        result = await self.generate_text(prompt)
+        if not result:
+            return [None] * len(texts)
+
+        # Parse numbered results
+        import re
+        output = [None] * len(texts)
+        for line in result.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            match = re.match(r"^(\d+)[.)]\s*(.+)", line)
+            if match:
+                orig_idx = int(match.group(1)) - 1
+                translated = match.group(2).strip()
+                if orig_idx < len(indexed):
+                    actual_idx = indexed[orig_idx][0]
+                    output[actual_idx] = translated
+
+        # For any that failed, fall back to English
+        for i in range(len(texts)):
+            if output[i] is None and texts[i]:
+                output[i] = texts[i]
+
+        return output
+
     def get_call_count(self) -> int:
         """Get total API calls made this session."""
         return self._call_count

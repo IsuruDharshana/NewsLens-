@@ -11,7 +11,7 @@ import { useLocalSearchParams, Stack } from 'expo-router';
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { getStoryDetail } from '@/lib/api';
+import { getStoryDetail, getPreferences } from '@/lib/api';
 import type { ClusterDetail, BiasAnalysis } from '@/lib/types';
 
 export default function StoryDetail() {
@@ -27,8 +27,16 @@ export default function StoryDetail() {
     (async () => {
       if (!id) return;
       setLoading(true);
+
+      // Load user language preference
+      let lang = 'en';
       try {
-        const data = await getStoryDetail(id);
+        const prefs = await getPreferences();
+        if (prefs.language) lang = prefs.language;
+      } catch { /* default to en */ }
+
+      try {
+        const data = await getStoryDetail(id, lang);
         setStory(data);
       } catch (err: any) {
         setError(err?.message ?? 'Failed to load story');

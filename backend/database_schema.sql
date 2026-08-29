@@ -45,6 +45,8 @@ CREATE TABLE user_profiles (
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY REFERENCES user_profiles(id),
     categories TEXT[] DEFAULT '{}',
+    language TEXT DEFAULT 'en',
+    sports_interests TEXT[] DEFAULT '{}',
     notification_enabled BOOLEAN DEFAULT true,
     fcm_token TEXT,
     created_at TIMESTAMPTZ DEFAULT now(),
