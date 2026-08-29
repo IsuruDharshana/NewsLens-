@@ -4,6 +4,7 @@
 -- Grouped stories (same event from multiple sources) — MUST be before articles
 CREATE TABLE clusters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT,
     summary TEXT,
     source_count INTEGER DEFAULT 0,
     category TEXT NOT NULL,

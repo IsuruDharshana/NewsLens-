@@ -99,6 +99,7 @@ class PipelineOrchestrator:
             logger.info("═══ PIPELINE STEP 5: STORING RESULTS ═══")
             for cluster in clusters:
                 cluster_id = await supabase_service.create_cluster({
+                    "title": cluster.get("title"),
                     "summary": cluster.get("summary"),
                     "source_count": cluster.get("source_count", 0),
                     "category": cluster.get("category", "Politics"),

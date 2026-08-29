@@ -4,6 +4,7 @@
 
 export interface ClusterListItem {
   id: string;
+  title: string | null;
   summary: string | null;
   source_count: number;
   category: string;
@@ -42,6 +43,7 @@ export interface BiasAnalysis {
 
 export interface ClusterDetail {
   id: string;
+  title: string | null;
   summary: string | null;
   source_count: number;
   category: string;

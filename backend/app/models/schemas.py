@@ -46,6 +46,7 @@ class BiasAnalysis(BaseModel):
 
 class ClusterResponse(BaseModel):
     id: str
+    title: Optional[str] = None
     summary: Optional[str] = None
     source_count: int = 0
     category: str
@@ -61,6 +62,7 @@ class ClusterResponse(BaseModel):
 
 class ClusterListItem(BaseModel):
     id: str
+    title: Optional[str] = None
     summary: Optional[str] = None
     source_count: int = 0
     category: str
