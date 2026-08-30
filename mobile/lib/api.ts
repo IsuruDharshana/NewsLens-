@@ -1,9 +1,11 @@
 /**
  * NewsLens API client — talks to the FastAPI backend.
  *
- * Set API_BASE_URL to your backend:
- *   - Local dev:  http://localhost:8000
- *   - Deployed:   https://your-render-url.onrender.com
+ * ┌─────────────────────────────────────────────────────────┐
+ * │  After deploying backend to Render, replace the URL     │
+ * │  below with your Render URL (no trailing slash).        │
+ * │  e.g. 'https://newslens-backend.onrender.com'           │
+ * └─────────────────────────────────────────────────────────┘
  */
 import axios from 'axios';
 import type {
@@ -12,9 +14,13 @@ import type {
   RAGResponse,
 } from './types';
 
+// ━━ UPDATE THIS after deploying backend ━━━━━━━━━━━━━━━━━━
+const PRODUCTION_API_URL = 'https://your-render-url.onrender.com';
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 const API_BASE_URL = __DEV__
   ? 'http://localhost:8000'
-  : 'https://your-render-url.onrender.com';
+  : PRODUCTION_API_URL;
 
 const api = axios.create({
   baseURL: API_BASE_URL,

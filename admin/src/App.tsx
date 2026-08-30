@@ -1,6 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 
-const API = '/api'
+// In dev: Vite proxies /api → localhost:8000
+// In production: set VITE_API_URL to your Render backend (e.g. https://newslens-backend.onrender.com)
+const API = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api'
 
 // ── Types ────────────────────────────────────────────────────────────
 interface DashboardData {
@@ -188,7 +192,7 @@ export default function App() {
     <div className="error-page">
       <h2>Cannot connect to backend</h2>
       <p>{error}</p>
-      <p className="hint">Make sure the backend is running at <code>localhost:8000</code></p>
+      <p className="hint">Make sure the backend is running{import.meta.env.VITE_API_URL ? ` at ${import.meta.env.VITE_API_URL}` : ' at localhost:8000'}</p>
       <button onClick={fetchDashboard}>Retry</button>
     </div>
   )
