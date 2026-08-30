@@ -15,7 +15,7 @@ import type {
 } from './types';
 
 // ━━ UPDATE THIS after deploying backend ━━━━━━━━━━━━━━━━━━
-const PRODUCTION_API_URL = 'https://your-render-url.onrender.com';
+const PRODUCTION_API_URL = 'https://newslens-wcki.onrender.com';
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 const API_BASE_URL = __DEV__
