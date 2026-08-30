@@ -51,9 +51,8 @@ class PipelineOrchestrator:
             "errors": [],
         }
 
-        run_id = await supabase_service.create_pipeline_run()
-
         try:
+            run_id = await supabase_service.create_pipeline_run()
             # ── Step 1: SCOUT — Fetch articles from RSS feeds ──
             logger.info("═══ PIPELINE STEP 1: SCOUT AGENT ═══")
             raw_articles = await self.scout.fetch_all()
@@ -64,7 +63,7 @@ class PipelineOrchestrator:
                 logger.info("No new articles found. Pipeline complete.")
                 stats["status"] = "completed"
                 stats["message"] = "No new articles"
-                await self._finish_run(run_id, stats)
+                stats["completed_at"] = datetime.now(timezone.utc).isoformat()
                 return stats
 
             # Store raw articles in Supabase
@@ -165,12 +164,14 @@ class PipelineOrchestrator:
             stats["status"] = "failed"
             stats["errors"].append(str(e))
             errors.append(str(e))
+            run_id = None
 
         finally:
             self.is_running = False
             self.last_run_at = datetime.now(timezone.utc)
             self.last_run_stats = stats
-            await self._finish_run(run_id, stats)
+            if run_id:
+                await self._finish_run(run_id, stats)
 
         return stats
 
