@@ -14,6 +14,7 @@ export interface ClusterListItem {
   top_sources: string[];
   like_count: number;
   comment_count: number;
+  image_url: string | null;
   published_at: string | null;
 }
 
@@ -53,6 +54,7 @@ export interface ClusterDetail {
   official_source_data: unknown | null;
   bias_analysis: BiasAnalysis | null;
   sources: SourceInfo[];
+  image_url: string | null;
   published_at: string | null;
   created_at: string | null;
 }
@@ -70,3 +72,18 @@ export const CATEGORIES = [
 ] as const;
 
 export type Category = (typeof CATEGORIES)[number];
+
+// --- RAG "Ask about the news" ---
+
+export interface RAGSource {
+  name: string;
+  title: string;
+  url: string;
+}
+
+export interface RAGResponse {
+  question: string;
+  answer: string;
+  sources: RAGSource[];
+  official_data: unknown | null;
+}

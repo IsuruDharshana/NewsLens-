@@ -56,6 +56,7 @@ class ClusterResponse(BaseModel):
     official_source_data: Optional[dict] = None
     bias_analysis: Optional[dict] = None
     sources: List[SourceInfo] = []
+    image_url: Optional[str] = None
     published_at: Optional[datetime] = None
     created_at: datetime
 
@@ -72,6 +73,7 @@ class ClusterListItem(BaseModel):
     top_sources: List[str] = []
     like_count: int = 0
     comment_count: int = 0
+    image_url: Optional[str] = None
     published_at: Optional[datetime] = None
 
 
@@ -90,6 +92,7 @@ class QueryRequest(BaseModel):
 
 class QuerySource(BaseModel):
     name: str
+    title: str
     url: str
 
 

@@ -1,6 +1,7 @@
 """Scout Agent — Fetches news from RSS feeds."""
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import List, Dict, Any
 
@@ -11,6 +12,9 @@ from app.models.sources import FEED_SOURCES
 from app.config import get_settings
 
 FEED_TIMEOUT = 10  # seconds per feed
+
+# First <img src="..."> in HTML (used as last-resort fallback for og:image etc.)
+_IMG_SRC_RE = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -75,6 +79,7 @@ class ScoutAgent:
                 "content": self._extract_content(entry),
                 "published_at": published.isoformat() if published else None,
                 "language": feed_config.get("language", "en"),
+                "image_url": self._extract_image_url(entry),
             }
 
             if article["title"]:
@@ -93,6 +98,59 @@ class ScoutAgent:
         if hasattr(entry, "description"):
             return entry.description[:2000]
         return ""
+
+    def _extract_image_url(self, entry) -> str | None:
+        """Extract a thumbnail image URL from a feed entry.
+        Tries Media RSS, RSS enclosures, RSS <image>, then <img> in content.
+        Returns None when no usable image is found.
+        """
+        candidate: Any = None
+
+        # 1) Media RSS <media:content> — most common for modern feeds
+        media_content = getattr(entry, "media_content", None) or []
+        for m in media_content:
+            url = m.get("url") if isinstance(m, dict) else None
+            mime = (m.get("type") or "").lower() if isinstance(m, dict) else ""
+            if url and (not mime or mime.startswith("image/")):
+                candidate = url
+                break
+
+        # 2) Media RSS <media:thumbnail>
+        if not candidate:
+            thumbs = getattr(entry, "media_thumbnail", None) or []
+            if thumbs and isinstance(thumbs[0], dict):
+                candidate = thumbs[0].get("url")
+
+        # 3) RSS 2.0 <enclosure> with image/* type
+        if not candidate:
+            enclosures = getattr(entry, "enclosures", None) or []
+            for enc in enclosures:
+                if not isinstance(enc, dict):
+                    continue
+                enc_type = (enc.get("type") or "").lower()
+                enc_url = enc.get("href") or enc.get("url")
+                if enc_url and enc_type.startswith("image/"):
+                    candidate = enc_url
+                    break
+
+        # 4) Last resort: first <img src="..."> inside content or summary HTML
+        if not candidate:
+            html = ""
+            if getattr(entry, "content", None):
+                html = entry.content[0].get("value", "")
+            if not html and getattr(entry, "summary", None):
+                html = entry.summary
+            if html:
+                match = _IMG_SRC_RE.search(html)
+                if match:
+                    candidate = match.group(1)
+
+        if not candidate or not isinstance(candidate, str):
+            return None
+        # Only accept absolute http(s) URLs — skip data: URIs and relative paths
+        if not (candidate.startswith("http://") or candidate.startswith("https://")):
+            return None
+        return candidate
 
     def _parse_date(self, entry) -> datetime | None:
         """Parse published date from feed entry."""

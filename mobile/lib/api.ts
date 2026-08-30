@@ -6,7 +6,11 @@
  *   - Deployed:   https://your-render-url.onrender.com
  */
 import axios from 'axios';
-import type { PaginatedResponse, ClusterDetail } from './types';
+import type {
+  PaginatedResponse,
+  ClusterDetail,
+  RAGResponse,
+} from './types';
 
 const API_BASE_URL = __DEV__
   ? 'http://localhost:8000'
@@ -53,6 +57,24 @@ export async function getStoryDetail(clusterId: string, lang?: string): Promise<
     params.lang = lang;
   }
   const { data } = await api.get<ClusterDetail>(`/api/news/${clusterId}`, { params });
+  return data;
+}
+
+/** RAG: ask a natural-language question about the news. */
+export async function askQuestion(question: string): Promise<RAGResponse> {
+  const { data } = await api.post<RAGResponse>('/api/news/query', { question });
+  return data;
+}
+
+/** Full-text search across news clusters (title + summary). */
+export async function searchNews(
+  query: string,
+  page = 1,
+  limit = 30,
+): Promise<PaginatedResponse> {
+  const { data } = await api.get<PaginatedResponse>('/api/news/search', {
+    params: { q: query, page, limit },
+  });
   return data;
 }
 

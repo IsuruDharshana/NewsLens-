@@ -69,6 +69,29 @@ class SupabaseService:
             logger.error(f"Error fetching cluster articles: {e}")
             return []
 
+    def get_representative_images(self, cluster_ids: list[str]) -> dict[str, str]:
+        """For each cluster, return the first non-null image_url from its articles.
+        Returns {cluster_id: image_url}. Missing image_url or column → not in dict.
+        """
+        result: dict[str, str] = {}
+        if not cluster_ids:
+            return result
+        try:
+            rows = self.client.table("articles").select(
+                "cluster_id, image_url, published_at"
+            ).in_("cluster_id", cluster_ids).not_.is_("image_url", "null").order(
+                "published_at", desc=True
+            ).execute()
+            # First row per cluster_id wins (rows are newest-first)
+            for row in rows.data or []:
+                cid = row.get("cluster_id")
+                url = row.get("image_url")
+                if cid and url and cid not in result:
+                    result[cid] = url
+        except Exception as e:
+            logger.debug(f"Representative image query failed (column may not exist yet): {e}")
+        return result
+
     # --- Clusters ---
 
     async def create_cluster(self, cluster: Dict[str, Any]) -> Optional[str]:
@@ -121,6 +144,40 @@ class SupabaseService:
         except Exception as e:
             logger.error(f"Error fetching cluster: {e}")
             return None
+
+    async def search_clusters(
+        self,
+        query: str,
+        page: int = 1,
+        limit: int = 20,
+    ) -> tuple[List[Dict], int]:
+        """Full-text search over cluster title (weight A) + summary (weight B).
+        Uses the generated `search_vector` column + GIN index.
+        Returns (rows, total). Empty / blank query or any failure -> ([], 0).
+        """
+        q = (query or "").strip()
+        if not q:
+            return [], 0
+        offset = (page - 1) * limit
+        try:
+            result = (
+                self.client.table("clusters")
+                .select("*", count="exact")
+                .text_search("search_vector", q, config="english", type="websearch")
+                .order("published_at", desc=True)
+                .range(offset, offset + limit - 1)
+                .execute()
+            )
+            return (result.data or []), (result.count or 0)
+        except Exception as e:
+            # Column missing -> migration not yet applied. Log + return empty
+            # so the route still answers 200 with an empty data array.
+            msg = str(e).lower()
+            if "search_vector" in msg or "column" in msg:
+                logger.debug(f"search_vector column missing (run migration): {e}")
+            else:
+                logger.error(f"Cluster search failed: {e}")
+            return [], 0
 
     # --- Auth ---
 

@@ -110,6 +110,17 @@ Then run these extra migrations (not yet in the schema file):
 -- AI-generated headline column
 ALTER TABLE clusters ADD COLUMN IF NOT EXISTS title TEXT;
 
+-- Article thumbnail (extracted from RSS media:content / enclosures / og:image)
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;
+
+-- Full-text search on clusters (used by GET /api/news/search?q=...)
+ALTER TABLE clusters ADD COLUMN IF NOT EXISTS search_vector tsvector
+  GENERATED ALWAYS AS (
+    setweight(to_tsvector('english', coalesce(title,   '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(summary, '')), 'B')
+  ) STORED;
+CREATE INDEX IF NOT EXISTS idx_clusters_search ON clusters USING GIN (search_vector);
+
 -- Likes table
 CREATE TABLE IF NOT EXISTS likes (
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -253,6 +264,7 @@ Full interactive docs at `http://localhost:8000/docs`.
 | GET | `/news/{id}` | Full story detail with sources, bias analysis. Param: `lang` |
 | GET | `/news/trending` | Stories sorted by trend_score |
 | GET | `/news/breaking` | Stories where is_breaking=true |
+| GET | `/news/search` | Full-text search (clusters title+summary). Params: `q` (required, ≥2 chars), `page`, `limit` |
 
 ### Auth
 | Method | Endpoint | Description |
@@ -339,6 +351,7 @@ Configured in `backend/app/models/sources.py`:
 - [x] Likes system (toggle, count on feed cards)
 - [x] Comments system (add, list, delete own)
 - [x] Engagement counts on feed cards (heart + chat icons)
+- [x] Full-text search across clusters (`/api/news/search`, search bar on home feed)
 - [x] Web admin dashboard (10 monitoring panels)
 - [x] Manual pipeline trigger button in admin
 - [x] GitHub Actions CI (runs on every push)
@@ -361,9 +374,8 @@ These are the remaining features in rough priority order:
 
 ### Nice to Have
 6. **Live cricket/football scores** — integrate a sports scores API (e.g., CricAPI for cricket). Show a live score widget on the home feed for Sports category users.
-7. **Search** — full-text search across clusters. Supabase supports `ts_vector` search natively.
-8. **More RSS sources** — especially Sinhala and Tamil sources. Add Lankadeepa, Virakesari when their feeds are stable.
-9. **Refresh fetch rate setting** in admin dashboard — let admin change `PIPELINE_INTERVAL_MINUTES` at runtime without restarting the server.
+7. **More RSS sources** — especially Sinhala and Tamil sources. Add Lankadeepa, Virakesari when their feeds are stable.
+8. **Refresh fetch rate setting** in admin dashboard — let admin change `PIPELINE_INTERVAL_MINUTES` at runtime without restarting the server.
 
 ---
 
