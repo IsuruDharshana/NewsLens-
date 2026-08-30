@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+import os
 
 
 class Settings(BaseSettings):
@@ -27,7 +28,7 @@ class Settings(BaseSettings):
     gemini_delay_between_calls: float = 1.0
 
     model_config = {
-        "env_file": ".env.example",
+        "env_file": ".env" if os.path.exists(".env") else None,
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

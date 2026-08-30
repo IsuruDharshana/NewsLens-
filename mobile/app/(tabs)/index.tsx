@@ -159,13 +159,26 @@ export default function HomeFeed() {
 
   const renderBreakingBanner = () => {
     if (breaking.length === 0) return null;
+    const story = breaking[0];
     return (
-      <View style={[styles.breakingBanner, { backgroundColor: colors.breakingBackground }]}>
-        <Text style={[styles.breakingLabel, { color: colors.breaking }]}>BREAKING</Text>
-        <Text style={[styles.breakingText, { color: colors.text }]} numberOfLines={1}>
-          {breaking[0].summary ?? 'Breaking story developing...'}
+      <Pressable
+        onPress={() => router.push({ pathname: '/story/[id]', params: { id: story.id } })}
+        style={({ pressed }) => [
+          styles.breakingBanner,
+          { backgroundColor: colors.breakingBackground, opacity: pressed ? 0.85 : 1 },
+        ]}
+      >
+        <View style={styles.breakingHeader}>
+          <Ionicons name="flash" size={14} color={colors.breaking} />
+          <Text style={[styles.breakingLabel, { color: colors.breaking }]}>BREAKING NEWS</Text>
+        </View>
+        <Text style={[styles.breakingTitle, { color: colors.text }]} numberOfLines={2}>
+          {story.title ?? story.summary ?? 'Breaking story developing...'}
         </Text>
-      </View>
+        <Text style={[styles.breakingHint, { color: colors.subtitle }]}>
+          Tap to read →
+        </Text>
+      </Pressable>
     );
   };
 
@@ -587,11 +600,38 @@ const styles = StyleSheet.create({
   },
   // Breaking banner
   breakingBanner: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 4,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ef444440',
+    gap: 6,
+  },
+  breakingHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
+    gap: 5,
+  },
+  breakingLabel: {
+    fontWeight: '800',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  breakingTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  breakingHint: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  breakingText: {
+    fontSize: 13,
+    flex: 1,
   },
   // Greeting
   greetingBar: {
@@ -601,15 +641,6 @@ const styles = StyleSheet.create({
   },
   greetingText: {
     fontSize: 14,
-  },
-  breakingLabel: {
-    fontWeight: '800',
-    fontSize: 11,
-    letterSpacing: 0.5,
-  },
-  breakingText: {
-    fontSize: 13,
-    flex: 1,
   },
   // Category chips
   chipsContainer: {

@@ -55,6 +55,8 @@ async def get_dashboard():
     return {
         "pipeline": {
             "is_running": pipeline_status.get("is_running", False),
+            "current_step": pipeline_status.get("current_step", ""),
+            "progress": pipeline_status.get("progress", 0),
             "last_run_at": pipeline_status.get("last_run_at"),
             "last_run": last_run,
         },

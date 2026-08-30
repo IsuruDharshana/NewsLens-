@@ -1,11 +1,17 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 
-const API = '/api'
+// In dev: Vite proxies /api → localhost:8000
+// In production: set VITE_API_URL to your Render backend (e.g. https://newslens-backend.onrender.com)
+const API = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api'
 
 // ── Types ────────────────────────────────────────────────────────────
 interface DashboardData {
   pipeline: {
     is_running: boolean
+    current_step: string
+    progress: number
     last_run_at: string | null
     last_run: Record<string, unknown>
   }
@@ -104,6 +110,8 @@ export default function App() {
   const [triggering, setTriggering] = useState(false)
   const [triggerMsg, setTriggerMsg] = useState<string | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  const [pipelineProgress, setPipelineProgress] = useState<{ step: string; pct: number } | null>(null)
+  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -125,19 +133,53 @@ export default function App() {
     return () => clearInterval(interval)
   }, [fetchDashboard])
 
+  // Poll pipeline status every 2s while running
+  const pollPipelineStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/pipeline/status`)
+      if (!res.ok) return
+      const status = await res.json()
+      if (status.is_running) {
+        setPipelineProgress({ step: status.current_step || 'Running...', pct: status.progress || 0 })
+      } else {
+        setPipelineProgress(null)
+        setTriggering(false)
+        if (progressTimer.current) {
+          clearInterval(progressTimer.current)
+          progressTimer.current = null
+        }
+        fetchDashboard()
+      }
+    } catch { /* ignore */ }
+  }, [fetchDashboard])
+
   const triggerPipeline = async () => {
+    if (triggering) return
     setTriggering(true)
     setTriggerMsg(null)
+    setPipelineProgress({ step: 'Starting...', pct: 5 })
     try {
       const res = await fetch(`${API}/pipeline/trigger`, { method: 'POST' })
       const json = await res.json()
-      setTriggerMsg(`Pipeline completed: ${json.articles_fetched} articles, ${json.clusters_created} clusters`)
-      fetchDashboard()
+      if (json.status === 'already_running') {
+        setTriggerMsg('Pipeline is already running')
+      } else {
+        // Start polling for progress
+        progressTimer.current = setInterval(pollPipelineStatus, 2000)
+      }
     } catch {
       setTriggerMsg('Pipeline trigger failed — check backend logs')
+      setTriggering(false)
+      setPipelineProgress(null)
     }
-    setTriggering(false)
   }
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (progressTimer.current) clearInterval(progressTimer.current)
+    }
+  }, [])
 
   if (loading) return (
     <div className="loading">
@@ -150,7 +192,7 @@ export default function App() {
     <div className="error-page">
       <h2>Cannot connect to backend</h2>
       <p>{error}</p>
-      <p className="hint">Make sure the backend is running at <code>localhost:8000</code></p>
+      <p className="hint">Make sure the backend is running{import.meta.env.VITE_API_URL ? ` at ${import.meta.env.VITE_API_URL}` : ' at localhost:8000'}</p>
       <button onClick={fetchDashboard}>Retry</button>
     </div>
   )
@@ -173,7 +215,7 @@ export default function App() {
         <div className="header-right">
           <button className="btn-secondary" onClick={fetchDashboard}>↻ Refresh</button>
           <button
-            className={`btn-primary ${triggering ? 'btn-disabled' : ''}`}
+            className={`btn-primary ${triggering ? '' : ''}`}
             onClick={triggerPipeline}
             disabled={triggering || pipeline.is_running}
           >
@@ -181,6 +223,19 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {/* ── Progress bar ── */}
+      {pipelineProgress && (
+        <div className="progress-banner">
+          <div className="progress-header">
+            <span className="progress-step">🔄 {pipelineProgress.step}</span>
+            <span className="progress-pct">{pipelineProgress.pct}%</span>
+          </div>
+          <div className="progress-track">
+            <div className="progress-fill" style={{ width: `${pipelineProgress.pct}%` }} />
+          </div>
+        </div>
+      )}
 
       {triggerMsg && (
         <div className="alert">{triggerMsg}</div>
