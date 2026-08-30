@@ -24,6 +24,16 @@ EMBED_BUDGET_PER_RUN = 30
 class PipelineOrchestrator:
     """Runs the full news processing pipeline: fetch → cluster → summarize → verify."""
 
+    # Pipeline steps for progress tracking
+    STEPS = [
+        (1, "Fetching articles from RSS feeds", 20),
+        (2, "Storing articles in database", 35),
+        (3, "Clustering and categorizing", 50),
+        (4, "Generating headlines and summaries", 65),
+        (5, "Detecting bias and verifying", 80),
+        (6, "Saving results", 95),
+    ]
+
     def __init__(self):
         self.scout = ScoutAgent()
         self.analyst = AnalystAgent()
@@ -32,6 +42,8 @@ class PipelineOrchestrator:
         self.is_running = False
         self.last_run_at: datetime | None = None
         self.last_run_stats: dict = {}
+        self.current_step: str = ""
+        self.progress: int = 0
 
     async def run(self) -> dict:
         """Execute the full pipeline. Returns stats dict."""
@@ -40,6 +52,8 @@ class PipelineOrchestrator:
             return {"status": "skipped", "reason": "already_running"}
 
         self.is_running = True
+        self.current_step = "Starting pipeline..."
+        self.progress = 5
         errors = []
         stats = {
             "started_at": datetime.now(timezone.utc).isoformat(),
@@ -54,6 +68,7 @@ class PipelineOrchestrator:
         try:
             run_id = await supabase_service.create_pipeline_run()
             # ── Step 1: SCOUT — Fetch articles from RSS feeds ──
+            self._update_progress(1)
             logger.info("═══ PIPELINE STEP 1: SCOUT AGENT ═══")
             raw_articles = await self.scout.fetch_all()
             stats["articles_fetched"] = len(raw_articles)
@@ -67,6 +82,7 @@ class PipelineOrchestrator:
                 return stats
 
             # Store raw articles in Supabase
+            self._update_progress(2)
             stored_ids = []
             article_id_map: Dict[str, str] = {}  # source_url -> article_id
             for article in raw_articles:
@@ -84,24 +100,28 @@ class PipelineOrchestrator:
             await self._embed_recent_articles(raw_articles, article_id_map, stats)
 
             # ── Step 2: ANALYST — Cluster and categorize ──
+            self._update_progress(3)
             logger.info("═══ PIPELINE STEP 2: ANALYST AGENT ═══")
             analysis = await self.analyst.analyze(raw_articles)
             clusters = analysis.get("clusters", [])
             logger.info(f"Analyst produced {len(clusters)} clusters")
 
             # ── Step 3: WRITER — Generate neutral summaries ──
+            self._update_progress(4)
             logger.info("═══ PIPELINE STEP 3: WRITER AGENT ═══")
             clusters = await self.writer.write_summaries(clusters)
             summarized = sum(1 for c in clusters if c.get("summary"))
             logger.info(f"Writer summarized {summarized}/{len(clusters)} clusters")
 
             # ── Step 4: VERIFIER — Bias detection and confidence ──
+            self._update_progress(5)
             logger.info("═══ PIPELINE STEP 4: VERIFIER AGENT ═══")
             clusters = await self.verifier.verify(clusters)
             breaking_count = sum(1 for c in clusters if c.get("is_breaking"))
             logger.info(f"Verifier found {breaking_count} breaking stories")
 
             # ── Step 5: STORE — Persist clusters and link articles ──
+            self._update_progress(6)
             logger.info("═══ PIPELINE STEP 5: STORING RESULTS ═══")
             for cluster in clusters:
                 cluster_id = await supabase_service.create_cluster({
@@ -168,12 +188,22 @@ class PipelineOrchestrator:
 
         finally:
             self.is_running = False
+            self.current_step = ""
+            self.progress = 100
             self.last_run_at = datetime.now(timezone.utc)
             self.last_run_stats = stats
             if run_id:
                 await self._finish_run(run_id, stats)
 
         return stats
+
+    def _update_progress(self, step_num: int):
+        """Update progress for UI display."""
+        for num, name, percent in self.STEPS:
+            if num == step_num:
+                self.current_step = name
+                self.progress = percent
+                return
 
     async def _find_article_id(self, source_url: str) -> str | None:
         """Find an article ID by its source URL. Uses cache first."""
@@ -247,9 +277,11 @@ class PipelineOrchestrator:
             })
 
     def get_status(self) -> dict:
-        """Get current pipeline status."""
+        """Get current pipeline status with progress info."""
         return {
             "is_running": self.is_running,
+            "current_step": self.current_step,
+            "progress": self.progress,
             "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
             "last_run_stats": self.last_run_stats,
         }
