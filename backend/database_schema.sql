@@ -31,6 +31,7 @@ CREATE TABLE articles (
     cluster_id UUID REFERENCES clusters(id),
     bias_label TEXT,
     bias_explanation TEXT,
+    image_url TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -154,3 +155,16 @@ CREATE POLICY "Users can update own comments"
 CREATE POLICY "Users can delete own comments"
     ON comments FOR DELETE
     USING (auth.uid() = user_id);
+
+-- ============================================================================
+-- Full-text search (Feature: GET /api/news/search?q=...)
+-- Generated tsvector column on clusters (title=A, summary=B) + GIN index.
+-- Auto-updates on insert/update — no trigger or backend function needed.
+-- ============================================================================
+ALTER TABLE clusters ADD COLUMN IF NOT EXISTS search_vector tsvector
+  GENERATED ALWAYS AS (
+    setweight(to_tsvector('english', coalesce(title,   '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(summary, '')), 'B')
+  ) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_clusters_search ON clusters USING GIN (search_vector);

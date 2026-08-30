@@ -12,8 +12,13 @@ from app.agents.analyst import AnalystAgent
 from app.agents.writer import WriterAgent
 from app.agents.verifier import VerifierAgent
 from app.services.supabase_service import supabase_service
+from app.services.chroma_service import chroma_service
+from app.services.gemini_service import gemini_service
 
 logger = logging.getLogger(__name__)
+
+# Cap embeddings per pipeline run to stay under Gemini free-tier limits
+EMBED_BUDGET_PER_RUN = 30
 
 
 class PipelineOrchestrator:
@@ -40,6 +45,7 @@ class PipelineOrchestrator:
             "started_at": datetime.now(timezone.utc).isoformat(),
             "articles_fetched": 0,
             "articles_stored": 0,
+            "articles_embedded": 0,
             "clusters_created": 0,
             "clusters_updated": 0,
             "errors": [],
@@ -63,19 +69,20 @@ class PipelineOrchestrator:
 
             # Store raw articles in Supabase
             stored_ids = []
+            article_id_map: Dict[str, str] = {}  # source_url -> article_id
             for article in raw_articles:
                 article_id = await supabase_service.insert_article(article)
                 if article_id:
                     stored_ids.append(article_id)
+                    article_id_map[article["source_url"]] = article_id
             stats["articles_stored"] = len(stored_ids)
             logger.info(f"Stored {len(stored_ids)} new articles in Supabase")
 
-            # Build lookup: source_url -> article_id (for linking clusters later)
-            self._url_to_id: Dict[str, str] = {}
-            for article in raw_articles:
-                aid = await self._find_article_id(article.get("source_url"))
-                if aid:
-                    self._url_to_id[article["source_url"]] = aid
+            # Build lookup for the cluster step (reuses the map from above)
+            self._url_to_id = article_id_map
+
+            # ── Step 1.5: EMBED — Populate ChromaDB for RAG "Ask about the news" ──
+            await self._embed_recent_articles(raw_articles, article_id_map, stats)
 
             # ── Step 2: ANALYST — Cluster and categorize ──
             logger.info("═══ PIPELINE STEP 2: ANALYST AGENT ═══")
@@ -182,6 +189,51 @@ class PipelineOrchestrator:
         except Exception as e:
             logger.debug(f"Could not find article by URL: {source_url}")
         return None
+
+    async def _embed_recent_articles(
+        self,
+        raw_articles: list[Dict],
+        article_id_map: Dict[str, str],
+        stats: Dict,
+    ) -> None:
+        """Generate embeddings for the freshest articles and add them to ChromaDB.
+        Capped at EMBED_BUDGET_PER_RUN to keep Gemini free-tier usage bounded.
+        Failures are non-fatal: pipeline continues even if some articles fail to embed.
+        """
+        if not raw_articles or not article_id_map:
+            return
+        # Take the first N (Scout already returns most-recent-first)
+        to_embed = raw_articles[:EMBED_BUDGET_PER_RUN]
+        embedded = 0
+        for article in to_embed:
+            article_id = article_id_map.get(article.get("source_url", ""))
+            if not article_id:
+                continue
+            content = (article.get("content") or article.get("title") or "").strip()[:2000]
+            if not content:
+                continue
+            try:
+                embedding = await gemini_service.generate_embedding(content)
+                if not embedding:
+                    continue
+                await chroma_service.add_article(
+                    article_id=article_id,
+                    embedding=embedding,
+                    content=content,
+                    metadata={
+                        "title": (article.get("title") or "")[:300],
+                        "source_name": (article.get("source_name") or "")[:100],
+                        "source_url": article.get("source_url", ""),
+                        "published_at": article.get("published_at") or "",
+                    },
+                )
+                embedded += 1
+            except Exception as e:
+                # Non-fatal: keep pipeline running even if one article fails
+                logger.debug(f"Embedding skipped for {article.get('source_url')}: {e}")
+        stats["articles_embedded"] = embedded
+        if embedded:
+            logger.info(f"Embedded {embedded}/{len(to_embed)} new articles into ChromaDB")
 
     async def _finish_run(self, run_id: str | None, stats: dict):
         """Mark pipeline run as completed in Supabase."""
