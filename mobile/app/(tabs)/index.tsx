@@ -464,8 +464,13 @@ export default function HomeFeed() {
 
   const renderNewsCard = ({ item }: { item: ClusterListItem }) => {
     const relativeTime = timeAgo(item.published_at);
-    const displayTitle = item.title ?? item.summary?.split('.')[0] ?? 'Untitled story';
-    const displaySummary = item.title ? item.summary : item.summary?.split('.').slice(1).join('.') ?? '';
+    const rawTitle = item.title?.trim();
+    const rawSummary = item.summary?.trim();
+    const firstSentence = rawSummary?.split('.')[0]?.trim();
+    const displayTitle = rawTitle || firstSentence || 'News story';
+    const displaySummary = rawTitle
+      ? rawSummary
+      : rawSummary?.split('.').slice(1).join('.').trim() || '';
 
     return (
       <Pressable

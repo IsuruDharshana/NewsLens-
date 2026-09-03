@@ -245,16 +245,19 @@ export default function StoryDetail() {
             </View>
           )}
 
-          {/* Headline title */}
-          {story.title ? (
-            <Text style={[styles.headline, { color: colors.text }]}>
-              {story.title}
-            </Text>
-          ) : null}
+          {/* Headline title — never blank */}
+          <Text style={[styles.headline, { color: colors.text }]}>
+            {story.title?.trim() ||
+              story.summary?.split('.')[0]?.trim() ||
+              (story.sources[0]?.name ? `${story.sources[0].name} report` : 'News story')}
+          </Text>
 
           {/* Summary */}
           <Text style={[styles.summary, { color: colors.text }]}>
-            {story.summary ?? 'No summary available for this story.'}
+            {story.title?.trim()
+              ? story.summary
+              : story.summary?.split('.').slice(1).join('.').trim() || story.summary ||
+                'No summary available for this story.'}
           </Text>
 
           {/* Like + stats row */}

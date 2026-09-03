@@ -32,19 +32,41 @@ class WriterAgent:
             summaries = await self._summarize_batch(batch, start_offset=start)
             all_summaries.update(summaries)
 
-        # Apply summaries+titles to clusters
+        # Apply summaries+titles to clusters, with strong fallbacks so a card
+        # never ships with a completely blank headline.
         succeeded = 0
         for i, cluster in enumerate(clusters):
-            result = all_summaries.get(i)
-            if result:
-                cluster["summary"] = result.get("summary", "")
-                cluster["title"] = result.get("title", "")
+            result = all_summaries.get(i, {})
+            summary = (result.get("summary") or "").strip()
+            title = (result.get("title") or "").strip()
+
+            # Fallback 1: derive title from first article headline
+            if not title:
+                first_article_title = (cluster.get("articles", [])[0].get("title") if cluster.get("articles") else None) or ""
+                title = first_article_title.strip()
+
+            # Fallback 2: derive title from first sentence of summary
+            if not title and summary:
+                title = summary.split(".")[0].strip()
+
+            # Fallback 3: generic but informative title using category
+            if not title:
+                title = f"{cluster.get('category', 'News')} story"
+
+            # Fallback 4: derive summary from first article content if Gemini gave none
+            if not summary and cluster.get("articles"):
+                first_summary = (cluster["articles"][0].get("summary") or cluster["articles"][0].get("content") or "").strip()
+                if first_summary:
+                    summary = first_summary[:280] + ("..." if len(first_summary) > 280 else "")
+
+            cluster["summary"] = summary
+            cluster["title"] = title
+
+            if summary or title:
                 succeeded += 1
                 logger.info(f"  Cluster {i+1} [{cluster.get('category', '?')}]: {cluster['title']}")
                 logger.info(f"    Summary: {cluster['summary'][:80]}...")
             else:
-                cluster["summary"] = ""
-                cluster["title"] = ""
                 logger.warning(f"  Cluster {i+1} [{cluster.get('category', '?')}]: failed")
 
         logger.info(f"Writer Agent: {succeeded}/{len(clusters)} summaries generated")
@@ -101,7 +123,7 @@ Rules:
                 global_idx = local_idx + start_offset
                 text = item.get("summary", "").strip()
                 title = item.get("title", "").strip()
-                if text and 0 <= local_idx < len(clusters):
+                if (text or title) and 0 <= local_idx < len(clusters):
                     summaries[global_idx] = {"summary": text, "title": title}
         elif result and "summaries" in result:
             # Backward compat: old format with only summaries
@@ -109,8 +131,9 @@ Rules:
                 local_idx = item.get("story", 0) - 1
                 global_idx = local_idx + start_offset
                 text = item.get("summary", "").strip()
-                if text and 0 <= local_idx < len(clusters):
-                    summaries[global_idx] = {"summary": text, "title": ""}
+                title = item.get("title", "").strip()
+                if (text or title) and 0 <= local_idx < len(clusters):
+                    summaries[global_idx] = {"summary": text, "title": title}
         else:
             logger.warning(f"Batch summarization failed for offset {start_offset}")
 
