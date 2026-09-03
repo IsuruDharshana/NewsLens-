@@ -7,7 +7,7 @@ from fastapi import APIRouter
 
 from app.services.supabase_service import supabase_service
 from app.services.pipeline_service import pipeline
-from app.services.gemini_service import gemini_service
+from app.services.llm_service import llm_service
 from app.models.sources import FEED_SOURCES
 
 logger = logging.getLogger(__name__)
@@ -43,8 +43,8 @@ async def get_dashboard():
     # 7. Engagement stats
     engagement = _get_engagement_stats()
 
-    # 8. Gemini API usage
-    gemini_calls = gemini_service.get_call_count()
+    # 8. LLM API usage
+    gemini_calls = llm_service.get_call_count()
 
     # 9. Error log (from pipeline runs)
     error_log = _get_error_log()

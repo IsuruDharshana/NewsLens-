@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import List, Dict, Any
 
-from app.services.gemini_service import gemini_service
+from app.services.llm_service import llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +54,10 @@ Rules:
 - Group articles that cover the same event or story
 - Do not add any explanation, only return JSON"""
 
-        result = await gemini_service.generate_json(prompt)
+        result = await llm_service.generate_json(prompt)
 
         if not result or "groups" not in result:
-            logger.warning("Gemini clustering failed, creating individual clusters")
+            logger.warning("Clustering failed, creating individual clusters")
             return [self._new_cluster([a]) for a in articles]
 
         clusters = []
@@ -100,7 +100,7 @@ Rules:
 - Use only categories from the provided list
 - Do not add any explanation, only return JSON"""
 
-        result = await gemini_service.generate_json(prompt)
+        result = await llm_service.generate_json(prompt)
 
         if result and "categories" in result:
             for item in result["categories"]:

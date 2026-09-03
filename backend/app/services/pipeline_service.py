@@ -13,7 +13,7 @@ from app.agents.writer import WriterAgent
 from app.agents.verifier import VerifierAgent
 from app.services.supabase_service import supabase_service
 from app.services.chroma_service import chroma_service
-from app.services.gemini_service import gemini_service
+from app.services.llm_service import llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +166,10 @@ class PipelineOrchestrator:
             stats["status"] = "completed"
             stats["completed_at"] = datetime.now(timezone.utc).isoformat()
 
-            from app.services.gemini_service import gemini_service
-            gemini_calls = gemini_service.get_call_count()
-            stats["gemini_calls"] = gemini_calls
+            llm_calls = llm_service.get_call_count()
+            stats["gemini_calls"] = llm_calls  # keep old key for dashboard compat
+            stats["llm_calls"] = llm_calls
+            stats["llm_provider"] = llm_service.provider_name
 
             logger.info(
                 f"═══ PIPELINE COMPLETE ═══\n"
@@ -176,7 +177,7 @@ class PipelineOrchestrator:
                 f"  Articles stored:  {stats['articles_stored']}\n"
                 f"  Clusters created: {stats['clusters_created']}\n"
                 f"  Breaking stories: {breaking_count}\n"
-                f"  Gemini API calls: {gemini_calls}"
+                f"  LLM API calls:    {llm_calls} ({llm_service.provider_name})"
             )
 
         except Exception as e:
@@ -244,7 +245,7 @@ class PipelineOrchestrator:
             if not content:
                 continue
             try:
-                embedding = await gemini_service.generate_embedding(content)
+                embedding = await llm_service.generate_embedding(content)
                 if not embedding:
                     continue
                 await chroma_service.add_article(

@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     # Google Gemini
     gemini_api_key: str = "your_gemini_api_key_here"
 
+    # Groq (optional alternative LLM provider)
+    groq_api_key: str = ""
+    llm_provider: str = "gemini"  # "gemini" or "groq"
+
     # Firebase Cloud Messaging
     firebase_project_id: str = ""
     firebase_service_account_json: str = ""

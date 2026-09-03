@@ -12,7 +12,7 @@ from app.models.schemas import (
     SourceInfo,
 )
 from app.services.supabase_service import supabase_service
-from app.services.gemini_service import gemini_service
+from app.services.llm_service import llm_service
 from app.services.chroma_service import chroma_service
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ async def _maybe_translate_summaries(clusters: list[dict], lang: str | None) -> 
         return clusters
 
     try:
-        translated = await gemini_service.translate_to_sinhala_batch(summaries)
+        translated = await llm_service.translate_to_sinhala_batch(summaries)
         for i, t in enumerate(translated):
             if t:
                 clusters[i]["summary"] = t
@@ -158,7 +158,7 @@ async def get_news_detail(cluster_id: str, lang: Optional[str] = None):
     # Translate summary if needed
     if lang == "si" and cluster.get("summary"):
         try:
-            translated = await gemini_service.translate_to_sinhala_batch([cluster["summary"]])
+            translated = await llm_service.translate_to_sinhala_batch([cluster["summary"]])
             if translated and translated[0]:
                 cluster["summary"] = translated[0]
         except Exception as e:
@@ -232,7 +232,7 @@ async def query_news(request: QueryRequest):
 
     # 1) Embed the question with the same model used for article embeddings
     try:
-        question_embedding = await gemini_service.generate_embedding(question)
+        question_embedding = await llm_service.generate_embedding(question)
     except Exception as e:
         logger.error(f"Question embedding failed: {e}")
         question_embedding = None
@@ -292,7 +292,7 @@ Question: {question}
 Answer:"""
 
     # 4) Generate the grounded answer
-    answer = await gemini_service.generate_text(prompt)
+    answer = await llm_service.generate_text(prompt)
     if not answer:
         raise HTTPException(
             status_code=503,
