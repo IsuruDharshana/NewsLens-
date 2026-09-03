@@ -9,9 +9,11 @@ import {
   RefreshControl,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -20,15 +22,21 @@ import { getNews, getBreakingNews, getPreferences, askQuestion, searchNews } fro
 import { useAuth } from '@/lib/auth';
 import type { ClusterListItem, Category, RAGResponse } from '@/lib/types';
 import { CATEGORIES } from '@/lib/types';
+import { timeAgo } from '@/lib/time';
+import { CardSkeleton, BannerSkeleton } from '@/components/Skeleton';
 
 export default function HomeFeed() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isLandscape = width > 600;
 
   const [clusters, setClusters] = useState<ClusterListItem[]>([]);
   const [breaking, setBreaking] = useState<ClusterListItem[]>([]);
+  const [dismissedBreakingIds, setDismissedBreakingIds] = useState<Set<string>>(new Set());
   const [selectedCategory, setSelectedCategory] = useState<Category>('All');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -246,9 +254,14 @@ export default function HomeFeed() {
     setRefreshing(false);
   };
 
+  const dismissBreaking = useCallback((storyId: string) => {
+    setDismissedBreakingIds((prev) => new Set(prev).add(storyId));
+  }, []);
+
   const renderBreakingBanner = () => {
-    if (breaking.length === 0) return null;
-    const story = breaking[0];
+    const visibleBreaking = breaking.filter((s) => !dismissedBreakingIds.has(s.id));
+    if (visibleBreaking.length === 0) return null;
+    const story = visibleBreaking[0];
     return (
       <Pressable
         onPress={() => router.push({ pathname: '/story/[id]', params: { id: story.id } })}
@@ -258,9 +271,22 @@ export default function HomeFeed() {
         ]}
       >
         <View style={styles.breakingHeader}>
-          <Ionicons name="flash" size={14} color={colors.breaking} />
-          <Text style={[styles.breakingLabel, { color: colors.breaking }]}>BREAKING NEWS</Text>
+          <View style={styles.breakingTitleRow}>
+            <Ionicons name="flash" size={14} color={colors.breaking} />
+            <Text style={[styles.breakingLabel, { color: colors.breaking }]}>BREAKING NEWS</Text>
+          </View>
+          <Pressable
+            onPress={() => dismissBreaking(story.id)}
+            hitSlop={10}
+            style={styles.breakingClose}
+            accessibilityLabel="Dismiss breaking news"
+          >
+            <Ionicons name="close" size={18} color={colors.subtitle} />
+          </Pressable>
         </View>
+        <Text style={[styles.breakingTopic, { color: colors.subtitle }]} numberOfLines={1}>
+          {story.category}
+        </Text>
         <Text style={[styles.breakingTitle, { color: colors.text }]} numberOfLines={2}>
           {story.title ?? story.summary ?? 'Breaking story developing...'}
         </Text>
@@ -436,117 +462,138 @@ export default function HomeFeed() {
     );
   };
 
-  const renderNewsCard = ({ item }: { item: ClusterListItem }) => (
-    <Pressable
-      onPress={() => router.push({ pathname: '/story/[id]', params: { id: item.id } })}
-      style={({ pressed }) => [
-        styles.card,
-        {
-          backgroundColor: colors.card,
-          borderColor: colors.cardBorder,
-          opacity: pressed ? 0.85 : 1,
-        },
-      ]}
-    >
-      {/* Hero image / placeholder */}
-      <View
-        style={[
-          styles.hero,
-          { backgroundColor: colors.subtitle + '20' },
+  const renderNewsCard = ({ item }: { item: ClusterListItem }) => {
+    const relativeTime = timeAgo(item.published_at);
+    const displayTitle = item.title ?? item.summary?.split('.')[0] ?? 'Untitled story';
+    const displaySummary = item.title ? item.summary : item.summary?.split('.').slice(1).join('.') ?? '';
+
+    return (
+      <Pressable
+        onPress={() => router.push({ pathname: '/story/[id]', params: { id: item.id } })}
+        style={({ pressed }) => [
+          styles.card,
+          isLandscape && styles.cardLandscape,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.cardBorder,
+            opacity: pressed ? 0.85 : 1,
+          },
         ]}
       >
-        {item.image_url ? (
-          <Image
-            source={{ uri: item.image_url }}
-            style={styles.heroImage}
-            resizeMode="cover"
-          />
-        ) : null}
-      </View>
-
-      {/* Card body */}
-      <View style={styles.cardBody}>
-        {/* Category + Confidence row */}
-        <View style={styles.cardHeader}>
-          <View style={[styles.categoryTag, { backgroundColor: colors.categoryBg }]}>
-            <Text style={[styles.categoryTagText, { color: colors.categoryText }]}>
-              {item.category}
-            </Text>
-          </View>
-          <View style={styles.confidenceRow}>
-            <View
-              style={[
-                styles.confidenceDot,
-                {
-                  backgroundColor:
-                    item.confidence_score >= 0.6
-                      ? colors.confidence
-                      : item.confidence_score >= 0.4
-                        ? '#ffc107'
-                        : colors.breaking,
-                },
-              ]}
+        {/* Hero image / placeholder */}
+        <View
+          style={[
+            styles.hero,
+            isLandscape && styles.heroLandscape,
+            { backgroundColor: colors.subtitle + '20' },
+          ]}
+        >
+          {item.image_url ? (
+            <Image
+              source={{ uri: item.image_url }}
+              style={styles.heroImage}
+              resizeMode="cover"
             />
-            <Text style={[styles.confidenceText, { color: colors.subtitle }]}>
-              {Math.round(item.confidence_score * 100)}% confidence
-            </Text>
-          </View>
+          ) : (
+            <View style={styles.heroPlaceholder}>
+              <Ionicons name="newspaper-outline" size={36} color={colors.subtitle + '60'} />
+            </View>
+          )}
         </View>
 
-        {/* Title */}
-        {item.title ? (
-          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
-            {item.title}
-          </Text>
-        ) : null}
-
-        {/* Summary */}
-        <Text style={[styles.summary, { color: colors.text }]} numberOfLines={item.title ? 2 : 3}>
-          {item.summary ?? 'Summary not available'}
-        </Text>
-
-        {/* Footer: source count + engagement */}
-        <View style={styles.cardFooter}>
-          <View style={styles.footerLeft}>
-            <Text style={[styles.sourceCount, { color: colors.subtitle }]}>
-              {item.source_count} source{item.source_count !== 1 ? 's' : ''}
-            </Text>
-            <View style={styles.engagementRow}>
-              <Ionicons name="heart-outline" size={13} color={colors.subtitle} />
-              <Text style={[styles.engagementText, { color: colors.subtitle }]}>
-                {item.like_count ?? 0}
+        {/* Card body */}
+        <View style={[styles.cardBody, isLandscape && styles.cardBodyLandscape]}>
+          {/* Category + Confidence row */}
+          <View style={styles.cardHeader}>
+            <View style={[styles.categoryTag, { backgroundColor: colors.categoryBg }]}>
+              <Text style={[styles.categoryTagText, { color: colors.categoryText }]}>
+                {item.category}
               </Text>
-              <Ionicons
-                name="chatbubble-outline"
-                size={13}
-                color={colors.subtitle}
-                style={{ marginLeft: 8 }}
+            </View>
+            <View style={styles.confidenceRow}>
+              <View
+                style={[
+                  styles.confidenceDot,
+                  {
+                    backgroundColor:
+                      item.confidence_score >= 0.6
+                        ? colors.confidence
+                        : item.confidence_score >= 0.4
+                          ? '#ffc107'
+                          : colors.breaking,
+                  },
+                ]}
               />
-              <Text style={[styles.engagementText, { color: colors.subtitle }]}>
-                {item.comment_count ?? 0}
+              <Text style={[styles.confidenceText, { color: colors.subtitle }]}>
+                {Math.round(item.confidence_score * 100)}%
               </Text>
             </View>
           </View>
-          {item.is_breaking && (
-            <Text style={[styles.breakingTag, { color: colors.breaking }]}>Breaking</Text>
-          )}
+
+          {/* Title — always show a heading so context is never missing */}
+          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
+            {displayTitle}
+          </Text>
+
+          {/* Summary */}
+          {displaySummary ? (
+            <Text style={[styles.summary, { color: colors.text }]} numberOfLines={2}>
+              {displaySummary}
+            </Text>
+          ) : null}
+
+          {/* Footer: time + source count + engagement */}
+          <View style={styles.cardFooter}>
+            <View style={styles.footerLeft}>
+              {relativeTime ? (
+                <Text style={[styles.timeText, { color: colors.subtitle }]}>
+                  {relativeTime}
+                </Text>
+              ) : null}
+              <Text style={[styles.sourceCount, { color: colors.subtitle }]}>
+                {item.source_count} source{item.source_count !== 1 ? 's' : ''}
+              </Text>
+              <View style={styles.engagementRow}>
+                <Ionicons name="heart-outline" size={13} color={colors.subtitle} />
+                <Text style={[styles.engagementText, { color: colors.subtitle }]}>
+                  {item.like_count ?? 0}
+                </Text>
+                <Ionicons
+                  name="chatbubble-outline"
+                  size={13}
+                  color={colors.subtitle}
+                  style={{ marginLeft: 8 }}
+                />
+                <Text style={[styles.engagementText, { color: colors.subtitle }]}>
+                  {item.comment_count ?? 0}
+                </Text>
+              </View>
+            </View>
+            {item.is_breaking && (
+              <Text style={[styles.breakingTag, { color: colors.breaking }]}>Breaking</Text>
+            )}
+          </View>
         </View>
-      </View>
-    </Pressable>
-  );
+      </Pressable>
+    );
+  };
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.tint} />
-        <Text style={[styles.loadingText, { color: colors.subtitle }]}>Loading news...</Text>
+      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        <BannerSkeleton />
+        <View style={styles.skeletonList}>
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </View>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, { paddingTop: insets.top }]}>
         <Text style={[styles.errorTitle, { color: colors.breaking }]}>Connection Error</Text>
         <Text style={[styles.errorText, { color: colors.subtitle }]}>
           {error}{'\n\n'}Make sure the backend is running at localhost:8000
@@ -562,7 +609,7 @@ export default function HomeFeed() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* Greeting */}
       <View style={styles.greetingBar}>
         <Text style={[styles.greetingText, { color: colors.subtitle }]}>
@@ -733,6 +780,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
+  skeletonList: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    gap: 12,
+    marginTop: 8,
+  },
   // Breaking banner
   breakingBanner: {
     marginHorizontal: 16,
@@ -747,6 +800,11 @@ const styles = StyleSheet.create({
   breakingHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  breakingTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 5,
   },
   breakingLabel: {
@@ -755,10 +813,20 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  breakingTitle: {
-    fontSize: 14,
+  breakingClose: {
+    padding: 4,
+    marginRight: -4,
+  },
+  breakingTopic: {
+    fontSize: 12,
     fontWeight: '600',
-    lineHeight: 20,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  breakingTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 21,
   },
   breakingHint: {
     fontSize: 11,
@@ -859,17 +927,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
+  cardLandscape: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 180,
+  },
   hero: {
     width: '100%',
     height: 160,
+  },
+  heroLandscape: {
+    width: 240,
+    height: '100%',
   },
   heroImage: {
     width: '100%',
     height: '100%',
   },
+  heroPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   cardBody: {
     padding: 14,
     gap: 10,
+    flex: 1,
+  },
+  cardBodyLandscape: {
+    justifyContent: 'space-between',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -919,10 +1005,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  timeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   footerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flexWrap: 'wrap',
+    rowGap: 4,
   },
   engagementRow: {
     flexDirection: 'row',

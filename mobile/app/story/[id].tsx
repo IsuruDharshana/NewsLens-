@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -28,12 +29,15 @@ import {
 } from '@/lib/api';
 import type { ClusterDetail, BiasAnalysis } from '@/lib/types';
 import type { Comment } from '@/lib/api';
+import { timeAgo } from '@/lib/time';
+import { DetailSkeleton } from '@/components/Skeleton';
 
 export default function StoryDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [story, setStory] = useState<ClusterDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -183,15 +187,15 @@ export default function StoryDetail() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.tint} />
+      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        <DetailSkeleton />
       </View>
     );
   }
 
   if (error || !story) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, { paddingTop: insets.top }]}>
         <Text style={[styles.errorText, { color: colors.breaking }]}>
           {error ?? 'Story not found'}
         </Text>
@@ -209,15 +213,29 @@ export default function StoryDetail() {
         }}
       />
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={{ flex: 1, paddingBottom: insets.bottom }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={90}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <ScrollView
           ref={scrollViewRef}
           style={[styles.container, { backgroundColor: colors.background }]}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 16 }]}
         >
+          {/* Category + time */}
+          <View style={styles.metaRow}>
+            <View style={[styles.categoryTag, { backgroundColor: colors.categoryBg }]}>
+              <Text style={[styles.categoryTagText, { color: colors.categoryText }]}>
+                {story.category}
+              </Text>
+            </View>
+            {story.published_at && (
+              <Text style={[styles.publishedTime, { color: colors.subtitle }]}>
+                {timeAgo(story.published_at)}
+              </Text>
+            )}
+          </View>
+
           {/* Breaking tag */}
           {story.is_breaking && (
             <View style={[styles.breakingTag, { backgroundColor: colors.breakingBackground }]}>
@@ -344,7 +362,7 @@ export default function StoryDetail() {
                         {c.user_name}
                       </Text>
                       <Text style={[styles.commentTime, { color: colors.subtitle }]}>
-                        {new Date(c.created_at).toLocaleDateString()}
+                        {timeAgo(c.created_at)}
                       </Text>
                     </View>
                     <Text style={[styles.commentText, { color: colors.text }]}>{c.text}</Text>
@@ -404,7 +422,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    gap: 16,
+    gap: 14,
   },
   center: {
     flex: 1,
@@ -416,6 +434,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  categoryTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  categoryTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  publishedTime: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   // Breaking
   breakingTag: {
