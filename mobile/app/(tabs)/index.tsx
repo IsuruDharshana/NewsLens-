@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Linking,
+  Modal,
   Pressable,
   RefreshControl,
   StyleSheet,
   TextInput,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Text, View } from '@/components/Themed';
@@ -48,7 +49,95 @@ export default function HomeFeed() {
   const [searchTotal, setSearchTotal] = useState(0);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  // Header icon toggles: which inline panel/overlay is currently open.
+  // These are independent of the search results / RAG answer state — closing
+  // the input bar just hides the bar; existing results/answers remain in the
+  // feed until the user explicitly clears them.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+
   const isSearching = searchResults !== null;
+
+  // Imperative nav for setting headerRight on the tabs header.
+  const navigation = useNavigation();
+
+  // Toggles for the 3 header icons. Search and ask are mutually exclusive so
+  // the user only ever sees one input bar open at a time — same as the
+  // original behaviour where the ask bar was hidden in search mode.
+  const toggleSearch = useCallback(() => {
+    setSearchOpen((v) => {
+      if (!v) setAskOpen(false);
+      return !v;
+    });
+  }, []);
+  const toggleAsk = useCallback(() => {
+    setAskOpen((v) => {
+      if (!v) setSearchOpen(false);
+      return !v;
+    });
+  }, []);
+  const openFilter = useCallback(() => {
+    // If we're in search mode, exit it before opening the filter so the
+    // category filter applies to the regular feed (matches the old behaviour
+    // where category chips were hidden during search).
+    if (searchResults) {
+      setSearchQuery('');
+      setSearchResults(null);
+      setSearchTotal(0);
+      setSearchError(null);
+    }
+    setFilterOpen(true);
+  }, [searchResults]);
+  const closeFilter = useCallback(() => setFilterOpen(false), []);
+
+  // Inject the 3 headerRight icons (search, ask-AI, filter) into the tabs
+  // header. We use a function form so the icons can read the latest state on
+  // every render. Re-runs whenever any of the inputs change.
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.headerRight}>
+          <Pressable
+            onPress={toggleSearch}
+            hitSlop={8}
+            style={styles.headerIconButton}
+            accessibilityLabel="Search news"
+          >
+            <Ionicons
+              name="search"
+              size={22}
+              color={searchOpen ? colors.tint : colors.text}
+            />
+          </Pressable>
+          <Pressable
+            onPress={toggleAsk}
+            hitSlop={8}
+            style={styles.headerIconButton}
+            accessibilityLabel="Ask AI about the news"
+          >
+            <Ionicons
+              name="sparkles"
+              size={22}
+              color={askOpen ? colors.tint : colors.text}
+            />
+          </Pressable>
+          <Pressable
+            onPress={openFilter}
+            hitSlop={8}
+            style={styles.headerIconButton}
+            accessibilityLabel="Filter by category"
+          >
+            <Ionicons
+              name="filter"
+              size={22}
+              color={filterOpen || selectedCategory !== 'All' ? colors.tint : colors.text}
+            />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [navigation, searchOpen, askOpen, filterOpen, selectedCategory, colorScheme, toggleSearch, toggleAsk, openFilter]);
 
   const handleAsk = useCallback(async () => {
     const trimmed = question.trim();
@@ -327,35 +416,25 @@ export default function HomeFeed() {
     return null;
   };
 
-  const renderCategoryChips = () => (
-    <View style={styles.chipsContainer}>
-      {CATEGORIES.map((cat) => {
-        const isActive = cat === selectedCategory;
-        return (
-          <Pressable
-            key={cat}
-            onPress={() => setSelectedCategory(cat)}
-            style={[
-              styles.chip,
-              {
-                backgroundColor: isActive ? colors.tint : colors.categoryBg,
-                borderColor: isActive ? colors.tint : colors.cardBorder,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                { color: isActive ? '#fff' : colors.categoryText },
-              ]}
-            >
-              {cat}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
+  const renderFilterStatus = () => {
+    if (selectedCategory === 'All') return null;
+    return (
+      <View style={styles.filterStatusBar}>
+        <Ionicons name="filter" size={13} color={colors.tint} />
+        <Text style={[styles.filterStatusText, { color: colors.tint }]}>
+          Showing: {selectedCategory}
+        </Text>
+        <Pressable
+          onPress={() => setSelectedCategory('All')}
+          hitSlop={8}
+          style={styles.filterStatusClear}
+          accessibilityLabel="Clear category filter"
+        >
+          <Ionicons name="close-circle" size={16} color={colors.subtitle} />
+        </Pressable>
+      </View>
+    );
+  };
 
   const renderNewsCard = ({ item }: { item: ClusterListItem }) => (
     <Pressable
@@ -490,14 +569,16 @@ export default function HomeFeed() {
           Hello, <Text style={{ color: colors.text, fontWeight: '600' }}>{user?.name?.split(' ')[0] ?? 'there'}</Text>
         </Text>
       </View>
-      {/* Full-text search (always available) */}
-      {renderSearchBar()}
-      {/* Ask about the news (RAG) — hidden in search mode to reduce clutter */}
-      {!isSearching && renderAskBar()}
+      {/* Search input — only visible when the user taps the header search icon */}
+      {searchOpen && renderSearchBar()}
+      {/* Ask AI input — only visible when the user taps the header ask-AI icon */}
+      {askOpen && renderAskBar()}
+      {/* Active filter status pill (only when a non-default filter is applied
+          and the user is on the regular feed, not in search mode) */}
+      {selectedCategory !== 'All' && !isSearching && renderFilterStatus()}
       {renderAnswer()}
-      {/* Breaking banner + category chips hidden in search mode (search is its own filter) */}
+      {/* Breaking banner hidden in search mode (search is its own filter) */}
       {!isSearching && renderBreakingBanner()}
-      {!isSearching && renderCategoryChips()}
       <FlatList
         data={isSearching ? (searchResults ?? []) : clusters}
         keyExtractor={(item) => item.id}
@@ -554,6 +635,60 @@ export default function HomeFeed() {
           )
         }
       />
+
+      {/* Category dropdown — opens from the filter icon, anchored under the
+          tabs header. Tapping the backdrop or selecting a category closes it. */}
+      <Modal
+        visible={filterOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closeFilter}
+      >
+        <Pressable style={styles.filterBackdrop} onPress={closeFilter}>
+          <Pressable
+            style={[styles.filterDropdown, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+            onPress={() => {/* swallow taps so they don't bubble to the backdrop */}}
+          >
+            <View style={styles.filterDropdownHeader}>
+              <Text style={[styles.filterDropdownTitle, { color: colors.text }]}>
+                Filter by category
+              </Text>
+              <Pressable onPress={closeFilter} hitSlop={8} accessibilityLabel="Close filter">
+                <Ionicons name="close" size={20} color={colors.subtitle} />
+              </Pressable>
+            </View>
+            {CATEGORIES.map((cat) => {
+              const isActive = cat === selectedCategory;
+              return (
+                <Pressable
+                  key={cat}
+                  onPress={() => {
+                    setSelectedCategory(cat);
+                    closeFilter();
+                  }}
+                  style={({ pressed }) => [
+                    styles.filterDropdownItem,
+                    {
+                      backgroundColor: isActive ? colors.tint + '15' : 'transparent',
+                      opacity: pressed ? 0.6 : 1,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterDropdownItemText,
+                      { color: isActive ? colors.tint : colors.text },
+                    ]}
+                  >
+                    {cat}
+                  </Text>
+                  {isActive && <Ionicons name="checkmark" size={18} color={colors.tint} />}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -642,23 +777,75 @@ const styles = StyleSheet.create({
   greetingText: {
     fontSize: 14,
   },
-  // Category chips
-  chipsContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+  // Header right icons (search, ask-AI, filter)
+  headerRight: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    alignItems: 'center',
+    gap: 2,
   },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
+  headerIconButton: {
+    padding: 6,
   },
-  chipText: {
-    fontSize: 13,
+  // Active filter status pill
+  filterStatusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginHorizontal: 16,
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    gap: 6,
+  },
+  filterStatusText: {
+    fontSize: 12,
     fontWeight: '600',
+  },
+  filterStatusClear: {
+    padding: 2,
+  },
+  // Category dropdown modal
+  filterBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingTop: 88, // leave room for the tabs header above
+    paddingHorizontal: 16,
+  },
+  filterDropdown: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  filterDropdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  filterDropdownTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  filterDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  filterDropdownItemText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   // News list
   listContent: {
