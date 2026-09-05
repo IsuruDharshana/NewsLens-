@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Linking,
   Modal,
   Pressable,
@@ -23,7 +22,9 @@ import { useAuth } from '@/lib/auth';
 import type { ClusterListItem, Category, RAGResponse } from '@/lib/types';
 import { CATEGORIES } from '@/lib/types';
 import { timeAgo } from '@/lib/time';
+import { stripHtml } from '@/lib/text';
 import { CardSkeleton, BannerSkeleton } from '@/components/Skeleton';
+import { NewsImage } from '@/components/NewsImage';
 
 export default function HomeFeed() {
   const colorScheme = useColorScheme();
@@ -288,7 +289,7 @@ export default function HomeFeed() {
           {story.category}
         </Text>
         <Text style={[styles.breakingTitle, { color: colors.text }]} numberOfLines={2}>
-          {story.title ?? story.summary ?? 'Breaking story developing...'}
+          {stripHtml(story.title ?? story.summary).trim() || 'Breaking story developing...'}
         </Text>
         <Text style={[styles.breakingHint, { color: colors.subtitle }]}>
           Tap to read →
@@ -464,8 +465,8 @@ export default function HomeFeed() {
 
   const renderNewsCard = ({ item }: { item: ClusterListItem }) => {
     const relativeTime = timeAgo(item.published_at);
-    const rawTitle = item.title?.trim();
-    const rawSummary = item.summary?.trim();
+    const rawTitle = stripHtml(item.title).trim();
+    const rawSummary = stripHtml(item.summary).trim();
     const firstSentence = rawSummary?.split('.')[0]?.trim();
     const displayTitle = rawTitle || firstSentence || 'News story';
     const displaySummary = rawTitle
@@ -485,26 +486,13 @@ export default function HomeFeed() {
           },
         ]}
       >
-        {/* Hero image / placeholder */}
-        <View
-          style={[
-            styles.hero,
-            isLandscape && styles.heroLandscape,
-            { backgroundColor: colors.subtitle + '20' },
-          ]}
-        >
-          {item.image_url ? (
-            <Image
-              source={{ uri: item.image_url }}
-              style={styles.heroImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.heroPlaceholder}>
-              <Ionicons name="newspaper-outline" size={36} color={colors.subtitle + '60'} />
-            </View>
-          )}
-        </View>
+        {/* Hero image with automatic placeholder fallback */}
+        <NewsImage
+          uri={item.image_url}
+          category={item.category}
+          style={[styles.hero, isLandscape && styles.heroLandscape]}
+          resizeMode="cover"
+        />
 
         {/* Card body */}
         <View style={[styles.cardBody, isLandscape && styles.cardBodyLandscape]}>
@@ -944,15 +932,6 @@ const styles = StyleSheet.create({
   heroLandscape: {
     width: 240,
     height: '100%',
-  },
-  heroImage: {
-    width: '100%',
-    height: '100%',
-  },
-  heroPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   cardBody: {
     padding: 14,

@@ -4,6 +4,7 @@ import logging
 from typing import List, Dict, Any
 
 from app.services.llm_service import llm_service
+from app.utils.text import strip_html_tags
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,8 @@ class WriterAgent:
         succeeded = 0
         for i, cluster in enumerate(clusters):
             result = all_summaries.get(i, {})
-            summary = (result.get("summary") or "").strip()
-            title = (result.get("title") or "").strip()
+            summary = strip_html_tags(result.get("summary") or "").strip()
+            title = strip_html_tags(result.get("title") or "").strip()
 
             # Fallback 1: derive title from first article headline
             if not title:
@@ -55,7 +56,9 @@ class WriterAgent:
 
             # Fallback 4: derive summary from first article content if Gemini gave none
             if not summary and cluster.get("articles"):
-                first_summary = (cluster["articles"][0].get("summary") or cluster["articles"][0].get("content") or "").strip()
+                first_summary = strip_html_tags(
+                    cluster["articles"][0].get("summary") or cluster["articles"][0].get("content") or ""
+                ).strip()
                 if first_summary:
                     summary = first_summary[:280] + ("..." if len(first_summary) > 280 else "")
 
