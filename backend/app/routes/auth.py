@@ -21,6 +21,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
 class AuthResponse(BaseModel):
     access_token: str
     refresh_token: str
@@ -95,6 +99,28 @@ async def login(request: LoginRequest):
             raise HTTPException(status_code=401, detail="Invalid email or password")
         logger.error(f"Login error: {e}")
         raise HTTPException(status_code=401, detail="Login failed")
+
+
+@router.post("/refresh", response_model=AuthResponse)
+async def refresh(request: RefreshRequest):
+    """Refresh an access token using a refresh token."""
+    try:
+        result = supabase_service.refresh_session(request.refresh_token)
+        if not result:
+            raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+        return {
+            "access_token": result["access_token"],
+            "refresh_token": result["refresh_token"],
+            "user_id": result["user_id"],
+            "email": "",
+            "name": None,
+            "message": "Token refreshed successfully",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Refresh error: {e}")
+        raise HTTPException(status_code=401, detail="Could not refresh token")
 
 
 @router.get("/me")

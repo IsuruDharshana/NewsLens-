@@ -8,6 +8,7 @@
  * └─────────────────────────────────────────────────────────┘
  */
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
   PaginatedResponse,
   ClusterDetail,
@@ -26,6 +27,9 @@ export const API_BASE_URL = __DEV__
   ? (ENV_API_URL ?? 'http://localhost:8000')
   : (ENV_API_URL ?? PRODUCTION_API_URL);
 
+const TOKEN_KEY = 'newslens_token';
+const REFRESH_KEY = 'newslens_refresh';
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   // Render free tier cold starts can take 30-60s; give the backend time
@@ -33,6 +37,74 @@ const api = axios.create({
   timeout: 45000,
   headers: { 'Content-Type': 'application/json' },
 });
+
+// Token refresh state
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+function subscribeTokenRefresh(callback: (token: string) => void) {
+  refreshSubscribers.push(callback);
+}
+
+function onTokenRefreshed(token: string) {
+  refreshSubscribers.forEach((callback) => callback(token));
+  refreshSubscribers = [];
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  try {
+    const refreshToken = await AsyncStorage.getItem(REFRESH_KEY);
+    if (!refreshToken) return null;
+
+    const { data } = await axios.post(`${API_BASE_URL}/api/auth/refresh`, {
+      refresh_token: refreshToken,
+    });
+
+    await AsyncStorage.setItem(TOKEN_KEY, data.access_token);
+    await AsyncStorage.setItem(REFRESH_KEY, data.refresh_token);
+    api.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`;
+    return data.access_token;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Auto-refresh expired tokens and retry the original request
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      if (!isRefreshing) {
+        isRefreshing = true;
+        const newToken = await refreshAccessToken();
+        isRefreshing = false;
+
+        if (newToken) {
+          onTokenRefreshed(newToken);
+        } else {
+          // Refresh failed — clear stored tokens
+          await AsyncStorage.removeItem(TOKEN_KEY);
+          await AsyncStorage.removeItem(REFRESH_KEY);
+          delete api.defaults.headers.common['Authorization'];
+          return Promise.reject(error);
+        }
+      }
+
+      return new Promise((resolve) => {
+        subscribeTokenRefresh((token) => {
+          originalRequest.headers['Authorization'] = `Bearer ${token}`;
+          resolve(api(originalRequest));
+        });
+      });
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 /** Get paginated news feed, optionally filtered by category. */
 export async function getNews(

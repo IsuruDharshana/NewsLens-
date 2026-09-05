@@ -258,6 +258,22 @@ class SupabaseService:
             logger.debug(f"Token validation failed: {e}")
             return None
 
+    def refresh_session(self, refresh_token: str) -> dict | None:
+        """Refresh a Supabase session and return new tokens."""
+        try:
+            response = self.client.auth.refresh_session(refresh_token)
+            session = response.session
+            if not session or not session.user:
+                return None
+            return {
+                "access_token": session.access_token,
+                "refresh_token": session.refresh_token,
+                "user_id": session.user.id,
+            }
+        except Exception as e:
+            logger.error(f"Refresh session failed: {e}")
+            return None
+
     # --- User Preferences ---
 
     def get_user_preferences(self, user_id: str) -> dict | None:
