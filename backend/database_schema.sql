@@ -133,27 +133,33 @@ CREATE POLICY "Users can insert own preferences"
     WITH CHECK (auth.uid() = user_id);
 
 -- Likes: users can manage own likes, anyone can read
+DROP POLICY IF EXISTS "Likes are publicly readable" ON likes;
 CREATE POLICY "Likes are publicly readable"
     ON likes FOR SELECT
     USING (true);
 
+DROP POLICY IF EXISTS "Users can manage own likes" ON likes;
 CREATE POLICY "Users can manage own likes"
     ON likes FOR ALL
     USING (auth.uid() = user_id);
 
 -- Comments: anyone can read, users manage own
+DROP POLICY IF EXISTS "Comments are publicly readable" ON comments;
 CREATE POLICY "Comments are publicly readable"
     ON comments FOR SELECT
     USING (true);
 
+DROP POLICY IF EXISTS "Users can insert own comments" ON comments;
 CREATE POLICY "Users can insert own comments"
     ON comments FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own comments" ON comments;
 CREATE POLICY "Users can update own comments"
     ON comments FOR UPDATE
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own comments" ON comments;
 CREATE POLICY "Users can delete own comments"
     ON comments FOR DELETE
     USING (auth.uid() = user_id);
