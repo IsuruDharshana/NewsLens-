@@ -13,7 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping NewsLens health endpoint
+        # Render free-tier cold starts can take 60-90s. Retry up to 3 times
+        # with a 120s timeout so the first ping can wake the service up.
         run: |
-          curl -sS --max-time 30 \
+          curl -sS --max-time 120 --retry 3 --retry-delay 15 --retry-max-time 300 \
             https://newslens-wcki.onrender.com/health \
             -o /dev/null -w "HTTP %{http_code} - %{time_total}s\n"
