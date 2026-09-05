@@ -23,6 +23,13 @@ import type { ClusterListItem, Category, RAGResponse } from '@/lib/types';
 import { CATEGORIES } from '@/lib/types';
 import { timeAgo } from '@/lib/time';
 import { stripHtml } from '@/lib/text';
+import {
+  getCachedNews,
+  setCachedNews,
+  getCachedBreaking,
+  setCachedBreaking,
+} from '@/lib/cache';
+import { DEMO_NEWS, DEMO_BREAKING } from '@/lib/demoData';
 import { CardSkeleton, BannerSkeleton } from '@/components/Skeleton';
 import { NewsImage } from '@/components/NewsImage';
 
@@ -42,6 +49,7 @@ export default function HomeFeed() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fallbackMode, setFallbackMode] = useState<'none' | 'cached' | 'demo'>('none');
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [userLang, setUserLang] = useState<string>('en');
 
@@ -229,14 +237,34 @@ export default function HomeFeed() {
   const fetchNews = useCallback(async (category?: string, lang?: string) => {
     try {
       setError(null);
+      setFallbackMode('none');
       const [newsRes, breakingRes] = await Promise.all([
         getNews(1, 30, category, lang),
         getBreakingNews(lang),
       ]);
       setClusters(newsRes.data);
       setBreaking(breakingRes.data);
+      // Keep local cache warm for offline / demo protection.
+      await setCachedNews(newsRes.data);
+      await setCachedBreaking(breakingRes.data);
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to load news');
+      const message = err?.message ?? 'Failed to load news';
+
+      // Try cache first, then demo fallback, so the UI never goes blank.
+      const cachedNews = await getCachedNews();
+      const cachedBreaking = await getCachedBreaking();
+
+      if (cachedNews && cachedNews.length > 0) {
+        setClusters(cachedNews);
+        setBreaking(cachedBreaking ?? []);
+        setFallbackMode('cached');
+        setError(`${message}\n\nShowing previously loaded news.`);
+      } else {
+        setClusters(DEMO_NEWS);
+        setBreaking(DEMO_BREAKING);
+        setFallbackMode('demo');
+        setError(`${message}\n\nShowing demo stories for preview.`);
+      }
     }
   }, []);
 
@@ -584,7 +612,7 @@ export default function HomeFeed() {
     );
   }
 
-  if (error) {
+  if (error && fallbackMode === 'none') {
     return (
       <View style={[styles.center, { paddingTop: insets.top }]}>
         <Text style={[styles.errorTitle, { color: colors.breaking }]}>Connection Error</Text>
@@ -609,6 +637,35 @@ export default function HomeFeed() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+      {/* Fallback mode banner (cached or demo) */}
+      {fallbackMode !== 'none' && (
+        <View
+          style={[
+            styles.fallbackBanner,
+            {
+              backgroundColor:
+                fallbackMode === 'demo' ? colors.breakingBackground : colors.categoryBg,
+            },
+          ]}
+        >
+          <Ionicons
+            name={fallbackMode === 'demo' ? 'alert-circle-outline' : 'time-outline'}
+            size={16}
+            color={fallbackMode === 'demo' ? colors.breaking : colors.categoryText}
+          />
+          <Text
+            style={[
+              styles.fallbackText,
+              { color: fallbackMode === 'demo' ? colors.breaking : colors.categoryText },
+            ]}
+          >
+            {fallbackMode === 'demo'
+              ? 'Offline — showing demo stories'
+              : 'Offline — showing previously loaded news'}
+          </Text>
+        </View>
+      )}
+
       {/* Greeting */}
       <View style={styles.greetingBar}>
         <Text style={[styles.greetingText, { color: colors.subtitle }]}>
@@ -834,6 +891,21 @@ const styles = StyleSheet.create({
   breakingText: {
     fontSize: 13,
     flex: 1,
+  },
+  // Fallback banner (cached / demo)
+  fallbackBanner: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  fallbackText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   // Greeting
   greetingBar: {

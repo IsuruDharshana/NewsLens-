@@ -31,6 +31,8 @@ import type { ClusterDetail, BiasAnalysis } from '@/lib/types';
 import type { Comment } from '@/lib/api';
 import { timeAgo } from '@/lib/time';
 import { stripHtml } from '@/lib/text';
+import { getCachedStory, setCachedStory } from '@/lib/cache';
+import { getDemoStory } from '@/lib/demoData';
 import { DetailSkeleton } from '@/components/Skeleton';
 import { NewsImage } from '@/components/NewsImage';
 
@@ -44,6 +46,7 @@ export default function StoryDetail() {
   const [story, setStory] = useState<ClusterDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fallbackMode, setFallbackMode] = useState<'none' | 'cached' | 'demo'>('none');
 
   // Engagement state
   const [liked, setLiked] = useState(false);
@@ -67,8 +70,11 @@ export default function StoryDetail() {
       } catch { /* default to en */ }
 
       try {
+        setError(null);
+        setFallbackMode('none');
         const data = await getStoryDetail(id, lang);
         setStory(data);
+        await setCachedStory(id, data);
 
         // Load engagement data in parallel
         const [likeData, commentsData] = await Promise.allSettled([
@@ -83,7 +89,24 @@ export default function StoryDetail() {
           setComments(commentsData.value);
         }
       } catch (err: any) {
-        setError(err?.message ?? 'Failed to load story');
+        const message = err?.message ?? 'Failed to load story';
+
+        // Try cached story, then demo fallback, so the detail UI never goes blank.
+        const cached = await getCachedStory(id);
+        if (cached) {
+          setStory(cached);
+          setFallbackMode('cached');
+          setError(`${message}\n\nShowing previously loaded story.`);
+        } else {
+          const demo = getDemoStory(id);
+          if (demo) {
+            setStory(demo);
+            setFallbackMode('demo');
+            setError(`${message}\n\nShowing demo story for preview.`);
+          } else {
+            setError(message);
+          }
+        }
       }
       setLoading(false);
     })();
@@ -195,7 +218,7 @@ export default function StoryDetail() {
     );
   }
 
-  if (error || !story) {
+  if (!story) {
     return (
       <View style={[styles.center, { paddingTop: insets.top }]}>
         <Text style={[styles.errorText, { color: colors.breaking }]}>
@@ -224,6 +247,35 @@ export default function StoryDetail() {
           style={[styles.container, { backgroundColor: colors.background }]}
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 16 }]}
         >
+          {/* Fallback mode banner (cached or demo) */}
+          {fallbackMode !== 'none' && (
+            <View
+              style={[
+                styles.fallbackBanner,
+                {
+                  backgroundColor:
+                    fallbackMode === 'demo' ? colors.breakingBackground : colors.categoryBg,
+                },
+              ]}
+            >
+              <Ionicons
+                name={fallbackMode === 'demo' ? 'alert-circle-outline' : 'time-outline'}
+                size={16}
+                color={fallbackMode === 'demo' ? colors.breaking : colors.categoryText}
+              />
+              <Text
+                style={[
+                  styles.fallbackText,
+                  { color: fallbackMode === 'demo' ? colors.breaking : colors.categoryText },
+                ]}
+              >
+                {fallbackMode === 'demo'
+                  ? 'Offline — showing demo story'
+                  : 'Offline — showing previously loaded story'}
+              </Text>
+            </View>
+          )}
+
           {/* Hero image with placeholder fallback */}
           <NewsImage
             uri={story.image_url}
@@ -442,6 +494,19 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 200,
     borderRadius: 12,
+  },
+  fallbackBanner: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  fallbackText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   center: {
     flex: 1,
