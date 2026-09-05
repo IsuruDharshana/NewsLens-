@@ -99,6 +99,8 @@ ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clusters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
 
 -- Public read access for articles and clusters (news is public)
 CREATE POLICY "Articles are publicly readable"
