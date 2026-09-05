@@ -30,7 +30,9 @@ import {
 import type { ClusterDetail, BiasAnalysis } from '@/lib/types';
 import type { Comment } from '@/lib/api';
 import { timeAgo } from '@/lib/time';
+import { stripHtml } from '@/lib/text';
 import { DetailSkeleton } from '@/components/Skeleton';
+import { NewsImage } from '@/components/NewsImage';
 
 export default function StoryDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -222,6 +224,14 @@ export default function StoryDetail() {
           style={[styles.container, { backgroundColor: colors.background }]}
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 16 }]}
         >
+          {/* Hero image with placeholder fallback */}
+          <NewsImage
+            uri={story.image_url}
+            category={story.category}
+            style={styles.hero}
+            resizeMode="cover"
+          />
+
           {/* Category + time */}
           <View style={styles.metaRow}>
             <View style={[styles.categoryTag, { backgroundColor: colors.categoryBg }]}>
@@ -245,18 +255,19 @@ export default function StoryDetail() {
             </View>
           )}
 
-          {/* Headline title — never blank */}
+          {/* Headline title — never blank, HTML stripped */}
           <Text style={[styles.headline, { color: colors.text }]}>
-            {story.title?.trim() ||
-              story.summary?.split('.')[0]?.trim() ||
+            {stripHtml(story.title).trim() ||
+              stripHtml(story.summary).split('.')[0]?.trim() ||
               (story.sources[0]?.name ? `${story.sources[0].name} report` : 'News story')}
           </Text>
 
-          {/* Summary */}
+          {/* Summary — HTML stripped so RSS image tags never leak through */}
           <Text style={[styles.summary, { color: colors.text }]}>
-            {story.title?.trim()
-              ? story.summary
-              : story.summary?.split('.').slice(1).join('.').trim() || story.summary ||
+            {stripHtml(story.title).trim()
+              ? stripHtml(story.summary)
+              : stripHtml(story.summary).split('.').slice(1).join('.').trim() ||
+                stripHtml(story.summary) ||
                 'No summary available for this story.'}
           </Text>
 
@@ -426,6 +437,11 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     gap: 14,
+  },
+  hero: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
   },
   center: {
     flex: 1,

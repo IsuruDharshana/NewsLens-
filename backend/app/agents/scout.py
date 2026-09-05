@@ -10,6 +10,7 @@ import requests
 
 from app.models.sources import FEED_SOURCES
 from app.config import get_settings
+from app.utils.text import strip_html_tags
 
 FEED_TIMEOUT = 10  # seconds per feed
 
@@ -75,7 +76,7 @@ class ScoutAgent:
             article = {
                 "source_name": feed_config["name"],
                 "source_url": url,
-                "title": entry.get("title", "").strip(),
+                "title": strip_html_tags(entry.get("title", "")).strip(),
                 "content": self._extract_content(entry),
                 "published_at": published.isoformat() if published else None,
                 "language": feed_config.get("language", "en"),
@@ -89,15 +90,17 @@ class ScoutAgent:
         return articles
 
     def _extract_content(self, entry) -> str:
-        """Extract the best available content from a feed entry."""
+        """Extract the best available plain-text content from a feed entry."""
         # Try content field first (full article), then summary
+        text = ""
         if hasattr(entry, "content") and entry.content:
-            return entry.content[0].get("value", "")[:2000]
-        if hasattr(entry, "summary"):
-            return entry.summary[:2000]
-        if hasattr(entry, "description"):
-            return entry.description[:2000]
-        return ""
+            text = entry.content[0].get("value", "")
+        elif hasattr(entry, "summary"):
+            text = entry.summary
+        elif hasattr(entry, "description"):
+            text = entry.description
+        # Remove any embedded HTML (e.g. <img> placeholders) before storage.
+        return strip_html_tags(text)[:2000]
 
     def _extract_image_url(self, entry) -> str | None:
         """Extract a thumbnail image URL from a feed entry.

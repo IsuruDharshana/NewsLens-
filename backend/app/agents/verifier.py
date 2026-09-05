@@ -3,7 +3,7 @@
 import logging
 from typing import List, Dict, Any
 
-from app.services.gemini_service import gemini_service
+from app.services.llm_service import llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ Rules:
 - Keep explanations to one short sentence
 - Do not add any explanation, only return JSON"""
 
-        result = await gemini_service.generate_json(prompt)
+        result = await llm_service.generate_json(prompt)
         bias_map = {}
 
         if result and "results" in result:
