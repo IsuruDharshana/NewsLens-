@@ -18,13 +18,19 @@ import type {
 const PRODUCTION_API_URL = 'https://newslens-wcki.onrender.com';
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const API_BASE_URL = __DEV__
-  ? 'http://localhost:8000'
-  : PRODUCTION_API_URL;
+// Allow overriding via build-time env var (EXPO_PUBLIC_API_URL) without
+// editing source. Falls back to the hardcoded production URL.
+const ENV_API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+export const API_BASE_URL = __DEV__
+  ? (ENV_API_URL ?? 'http://localhost:8000')
+  : (ENV_API_URL ?? PRODUCTION_API_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  // Render free tier cold starts can take 30-60s; give the backend time
+  // to wake up before showing a connection error.
+  timeout: 45000,
   headers: { 'Content-Type': 'application/json' },
 });
 
