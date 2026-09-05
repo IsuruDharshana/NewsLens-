@@ -134,7 +134,7 @@ export default function SettingsScreen() {
         </View>
         {prefs?.language === 'si' && (
           <Text style={[styles.hint, { color: colors.subtitle }]}>
-            Sinhala summaries use AI with journalistic style prompting. Quality improves over time.
+            Sinhala summaries use journalistic style prompting. Quality improves over time.
           </Text>
         )}
       </View>
@@ -218,7 +218,7 @@ export default function SettingsScreen() {
           <View style={styles.stepContent}>
             <Text style={[styles.stepTitle, { color: colors.text }]}>Analyst Agent</Text>
             <Text style={[styles.stepDesc, { color: colors.subtitle }]}>
-              Groups same-story articles using Gemini AI clustering
+              Groups same-story articles
             </Text>
           </View>
         </View>
@@ -261,19 +261,6 @@ export default function SettingsScreen() {
             </View>
           </View>
         ))}
-      </View>
-
-      {/* Credits */}
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Built With</Text>
-        <Text style={[styles.techList, { color: colors.subtitle }]}>
-          Expo / React Native{'\n'}
-          FastAPI / Python{'\n'}
-          Google Gemini AI{'\n'}
-          Supabase (PostgreSQL + Auth){'\n'}
-          RSS Feeds from Sri Lankan sources
-        </Text>
-        <Text style={[styles.version, { color: colors.subtitle }]}>NewsLens v0.3.0</Text>
       </View>
 
       {/* Logout */}
@@ -395,15 +382,6 @@ const styles = StyleSheet.create({
   },
   biasDesc: {
     fontSize: 11,
-  },
-  // Tech
-  techList: {
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  version: {
-    fontSize: 11,
-    textAlign: 'center',
   },
   // Logout
   logoutButton: {
