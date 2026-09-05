@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { getNews, getBreakingNews, getPreferences, askQuestion, searchNews } from '@/lib/api';
+import { getNews, getBreakingNews, getPreferences, askQuestion, searchNews, API_BASE_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { ClusterListItem, Category, RAGResponse } from '@/lib/types';
 import { CATEGORIES } from '@/lib/types';
@@ -589,7 +589,13 @@ export default function HomeFeed() {
       <View style={[styles.center, { paddingTop: insets.top }]}>
         <Text style={[styles.errorTitle, { color: colors.breaking }]}>Connection Error</Text>
         <Text style={[styles.errorText, { color: colors.subtitle }]}>
-          {error}{'\n\n'}Make sure the backend is running at localhost:8000
+          {error}
+          {'\n\n'}
+          Backend: {API_BASE_URL}
+          {'\n'}
+          {API_BASE_URL.includes('localhost')
+            ? 'This build is pointing at a local server. Rebuild the APK with the production URL.'
+            : 'The server may be waking up (free tier). Wait a moment and retry.'}
         </Text>
         <Pressable
           onPress={() => fetchNews(selectedCategory, userLang)}
