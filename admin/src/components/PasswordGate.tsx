@@ -11,13 +11,11 @@ function PinInput({
   length,
   value,
   onChange,
-  disabled,
   error,
 }: {
   length: number
   value: string
   onChange: (pin: string) => void
-  disabled?: boolean
   error?: boolean
 }) {
   const inputsRef = useRef<(HTMLInputElement | null)[]>([])
@@ -73,28 +71,59 @@ function PinInput({
 
   return (
     <div className="flex items-center justify-center gap-3">
-      {Array.from({ length }).map((_, index) => (
-        <input
-          key={index}
-          ref={(el) => { inputsRef.current[index] = el }}
-          type="text"
-          inputMode="numeric"
-          maxLength={1}
-          value={digits[index] ?? ''}
-          disabled={disabled}
-          onChange={(e) => handleChange(index, e)}
-          onKeyDown={(e) => handleKeyDown(index, e)}
-          onPaste={handlePaste}
-          onFocus={() => setFocusedIndex(index)}
-          className={[
-            'w-14 h-16 text-center text-2xl font-semibold rounded-xl border-2 outline-none transition-all',
-            'bg-white text-gray-900 placeholder-transparent',
-            error
-              ? 'border-red-400 bg-red-50 focus:border-red-500'
-              : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100',
-          ].join(' ')}
+      {Array.from({ length }).map((_, index) => {
+        const isFilled = !!digits[index]
+        const isFocused = focusedIndex === index
+        return (
+          <input
+            key={index}
+            ref={(el) => { inputsRef.current[index] = el }}
+            type="text"
+            inputMode="numeric"
+            maxLength={1}
+            value={digits[index] ?? ''}
+            onChange={(e) => handleChange(index, e)}
+            onKeyDown={(e) => handleKeyDown(index, e)}
+            onPaste={handlePaste}
+            onFocus={() => setFocusedIndex(index)}
+            className={[
+              'h-14 w-12 rounded-xl border text-center text-2xl font-medium outline-none transition-all duration-200 sm:h-16 sm:w-14',
+              'bg-slate-800/60 text-white placeholder-transparent',
+              'backdrop-blur-sm',
+              error
+                ? 'border-red-500/60 shadow-[0_0_16px_rgba(239,68,68,0.35)]'
+                : isFocused
+                  ? 'border-blue-400/70 shadow-[0_0_20px_rgba(96,165,250,0.45)]'
+                  : isFilled
+                    ? 'border-slate-500/40'
+                    : 'border-slate-600/30',
+            ].join(' ')}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function LockIcon() {
+  return (
+    <div className="relative mx-auto mb-6 flex h-24 w-24 items-center justify-center">
+      <div className="absolute inset-0 rounded-full bg-blue-500/10 blur-2xl" />
+      <div className="absolute inset-0 rounded-full bg-indigo-500/10 blur-xl" />
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        className="relative h-14 w-14 text-slate-100 drop-shadow-[0_0_12px_rgba(148,163,184,0.5)]"
+        stroke="currentColor"
+        strokeWidth={1.2}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M16.5 10.5V6.75a4.5 4.5 0 00-9 0v3.75m-.75 0h10.5a.75.75 0 01.75.75v7.5a.75.75 0 01-.75.75H5.25a.75.75 0 01-.75-.75v-7.5a.75.75 0 01.75-.75z"
         />
-      ))}
+      </svg>
     </div>
   )
 }
@@ -115,7 +144,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
         setError(true)
         setShake(true)
         setPin('')
-        setTimeout(() => setShake(false), 400)
+        setTimeout(() => setShake(false), 450)
       }
     }
   }, [pin])
@@ -125,64 +154,56 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-[#0a0c14]">
+      {/* ambient glows */}
+      <div className="pointer-events-none absolute left-1/2 top-1/4 h-96 w-96 -translate-x-1/2 rounded-full bg-blue-600/10 blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-1/4 right-1/4 h-80 w-80 rounded-full bg-indigo-600/10 blur-[100px]" />
+
       <div
         className={[
-          'w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl transition-transform',
+          'relative w-full max-w-sm rounded-3xl border border-slate-700/30 bg-slate-900/60 p-8 shadow-2xl backdrop-blur-xl',
+          'before:absolute before:inset-0 before:rounded-3xl before:bg-gradient-to-b before:from-white/5 before:to-transparent before:content-[""]',
           shake ? 'animate-shake' : '',
         ].join(' ')}
       >
-        <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-blue-50">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-7 w-7 text-blue-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-              />
-            </svg>
+        <div className="relative">
+          <LockIcon />
+
+          <h1 className="text-center text-2xl font-semibold tracking-tight text-white">
+            Admin Access
+          </h1>
+          <p className="mt-2 text-center text-sm text-slate-400">
+            Enter the {EXPECTED.length}-digit PIN to unlock the dashboard
+          </p>
+
+          <div className="mt-8">
+            <PinInput length={EXPECTED.length} value={pin} onChange={setPin} error={error} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">NewsLens Admin</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Enter the {EXPECTED.length}-digit admin PIN to continue
+
+          {error && (
+            <p className="mt-5 text-center text-sm font-medium text-red-400">
+              Incorrect PIN. Try again.
+            </p>
+          )}
+
+          <p className="mt-6 text-center text-xs text-slate-500">
+            Restricted to event organizers
           </p>
         </div>
-
-        <PinInput
-          length={EXPECTED.length}
-          value={pin}
-          onChange={setPin}
-          error={error}
-        />
-
-        {error && (
-          <p className="mt-4 text-center text-sm font-medium text-red-600">
-            Incorrect PIN. Please try again.
-          </p>
-        )}
-
-        <p className="mt-6 text-center text-xs text-gray-400">
-          This area is restricted to event organizers.
-        </p>
       </div>
 
       <style>{`
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
-          20% { transform: translateX(-6px); }
-          40% { transform: translateX(6px); }
-          60% { transform: translateX(-4px); }
-          80% { transform: translateX(4px); }
+          15% { transform: translateX(-8px); }
+          30% { transform: translateX(8px); }
+          45% { transform: translateX(-5px); }
+          60% { transform: translateX(5px); }
+          75% { transform: translateX(-2px); }
+          90% { transform: translateX(2px); }
         }
         .animate-shake {
-          animation: shake 0.4s ease-in-out;
+          animation: shake 0.45s ease-in-out;
         }
       `}</style>
     </div>
