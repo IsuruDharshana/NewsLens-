@@ -93,6 +93,8 @@ CREATE INDEX idx_clusters_category ON clusters(category);
 CREATE INDEX idx_clusters_breaking ON clusters(is_breaking) WHERE is_breaking = true;
 CREATE INDEX idx_clusters_trend ON clusters(trend_score DESC);
 CREATE INDEX idx_clusters_published ON clusters(published_at DESC);
+CREATE INDEX idx_likes_cluster ON likes(cluster_id);
+CREATE INDEX idx_comments_cluster ON comments(cluster_id);
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE articles ENABLE ROW LEVEL SECURITY;

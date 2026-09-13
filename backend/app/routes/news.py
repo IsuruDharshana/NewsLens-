@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import APIRouter, Query, HTTPException, Header
@@ -71,10 +72,14 @@ async def get_news(
         page=page, limit=limit, category=category
     )
     clusters = await _maybe_translate_summaries(clusters, lang)
-    # Fetch engagement counts + representative image for all clusters in batch
+    # Fetch engagement counts + representative image for all clusters in
+    # parallel — the supabase-py calls are sync, so run them in threads to
+    # avoid stacking network roundtrips (keeps warm responses ~2x faster).
     cluster_ids = [c["id"] for c in clusters]
-    engagement = supabase_service.get_engagement_counts_batch(cluster_ids)
-    images = supabase_service.get_representative_images(cluster_ids)
+    engagement, images = await asyncio.gather(
+        asyncio.to_thread(supabase_service.get_engagement_counts_batch, cluster_ids),
+        asyncio.to_thread(supabase_service.get_representative_images, cluster_ids),
+    )
     return {
         "data": [
             _cluster_to_list_item(c, engagement.get(c["id"]), images.get(c["id"]))
@@ -94,8 +99,10 @@ async def get_trending_news(
         page=page, limit=limit, order_by="trend_score"
     )
     cluster_ids = [c["id"] for c in clusters]
-    engagement = supabase_service.get_engagement_counts_batch(cluster_ids)
-    images = supabase_service.get_representative_images(cluster_ids)
+    engagement, images = await asyncio.gather(
+        asyncio.to_thread(supabase_service.get_engagement_counts_batch, cluster_ids),
+        asyncio.to_thread(supabase_service.get_representative_images, cluster_ids),
+    )
     return {
         "data": [
             _cluster_to_list_item(c, engagement.get(c["id"]), images.get(c["id"]))
@@ -113,8 +120,10 @@ async def get_breaking_news(lang: Optional[str] = None):
     )
     clusters = await _maybe_translate_summaries(clusters, lang)
     cluster_ids = [c["id"] for c in clusters]
-    engagement = supabase_service.get_engagement_counts_batch(cluster_ids)
-    images = supabase_service.get_representative_images(cluster_ids)
+    engagement, images = await asyncio.gather(
+        asyncio.to_thread(supabase_service.get_engagement_counts_batch, cluster_ids),
+        asyncio.to_thread(supabase_service.get_representative_images, cluster_ids),
+    )
     return {
         "data": [
             _cluster_to_list_item(c, engagement.get(c["id"]), images.get(c["id"]))
@@ -137,8 +146,10 @@ async def search_news(
     query = q.strip()
     clusters, total = await supabase_service.search_clusters(query, page, limit)
     cluster_ids = [c["id"] for c in clusters]
-    engagement = supabase_service.get_engagement_counts_batch(cluster_ids)
-    images = supabase_service.get_representative_images(cluster_ids)
+    engagement, images = await asyncio.gather(
+        asyncio.to_thread(supabase_service.get_engagement_counts_batch, cluster_ids),
+        asyncio.to_thread(supabase_service.get_representative_images, cluster_ids),
+    )
     return {
         "data": [
             _cluster_to_list_item(c, engagement.get(c["id"]), images.get(c["id"]))

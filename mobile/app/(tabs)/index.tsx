@@ -235,37 +235,54 @@ export default function HomeFeed() {
   );
 
   const fetchNews = useCallback(async (category?: string, lang?: string) => {
-    try {
+    // Use allSettled so a failing breaking-news call doesn't blank out the
+    // main feed (and vice versa) — partial success still renders real data.
+    const [newsResult, breakingResult] = await Promise.allSettled([
+      getNews(1, 30, category, lang),
+      getBreakingNews(lang),
+    ]);
+
+    const newsOk = newsResult.status === 'fulfilled';
+    const breakingOk = breakingResult.status === 'fulfilled';
+
+    if (newsOk) {
+      setClusters(newsResult.value.data);
+      await setCachedNews(newsResult.value.data);
+    }
+    if (breakingOk) {
+      setBreaking(breakingResult.value.data);
+      await setCachedBreaking(breakingResult.value.data);
+    }
+
+    if (newsOk && breakingOk) {
       setError(null);
       setFallbackMode('none');
-      const [newsRes, breakingRes] = await Promise.all([
-        getNews(1, 30, category, lang),
-        getBreakingNews(lang),
-      ]);
-      setClusters(newsRes.data);
-      setBreaking(breakingRes.data);
-      // Keep local cache warm for offline / demo protection.
-      await setCachedNews(newsRes.data);
-      await setCachedBreaking(breakingRes.data);
-    } catch (err: any) {
-      const message = err?.message ?? 'Failed to load news';
+      return;
+    }
 
-      // Try cache first, then demo fallback, so the UI never goes blank.
+    // At least one request failed — fill the failed slot from cache/demo so
+    // the UI never goes blank, and surface the offline banner.
+    const failed = newsResult.status === 'rejected' ? newsResult : breakingResult;
+    const message =
+      (failed.status === 'rejected' ? failed.reason?.message : undefined) ??
+      'Failed to load news';
+
+    if (!newsOk) {
       const cachedNews = await getCachedNews();
-      const cachedBreaking = await getCachedBreaking();
-
       if (cachedNews && cachedNews.length > 0) {
         setClusters(cachedNews);
-        setBreaking(cachedBreaking ?? []);
-        setFallbackMode('cached');
-        setError(`${message}\n\nShowing previously loaded news.`);
+        setFallbackMode((m) => (m === 'demo' ? m : 'cached'));
       } else {
         setClusters(DEMO_NEWS);
-        setBreaking(DEMO_BREAKING);
         setFallbackMode('demo');
-        setError(`${message}\n\nShowing demo stories for preview.`);
       }
     }
+    if (!breakingOk) {
+      const cachedBreaking = await getCachedBreaking();
+      setBreaking(cachedBreaking ?? DEMO_BREAKING);
+    }
+
+    setError(`${message}\n\nShowing previously loaded news.`);
   }, []);
 
   useEffect(() => {

@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS comments (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Indexes so engagement count queries stay fast as data grows
+CREATE INDEX IF NOT EXISTS idx_likes_cluster ON likes(cluster_id);
+CREATE INDEX IF NOT EXISTS idx_comments_cluster ON comments(cluster_id);
+
 -- Enable Row Level Security
 ALTER TABLE likes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
